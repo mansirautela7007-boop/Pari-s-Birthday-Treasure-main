@@ -1102,7 +1102,14 @@ let _homeTimer = null;   // pending "cover finished closing → back to the cove
    and keeps whichever gives the bigger book. Works the same on phones (landscape),
    tablets and desktops. */
 function fitScale() {
-  const vw = window.innerWidth, vh = window.innerHeight;
+  // The VISIBLE area: visualViewport where it exists (mobile browser
+  // bars), otherwise the window. Ignored while pinch-zoomed, so zooming in to look
+  // closer doesn't shrink the book.
+  const vv = window.visualViewport && Math.abs(window.visualViewport.scale - 1) < 0.01
+    ? window.visualViewport : null;
+  const vw = vv ? vv.width : window.innerWidth;
+  const vh = vv ? vv.height : window.innerHeight;
+  const vTop = vv ? vv.offsetTop : 0, vLeft = vv ? vv.offsetLeft : 0;
   // The book's visible footprint in design px: the 1280×720 pages plus the
   // hardcover board around them (.book-frame overhangs 16px, and 42px on the right).
   const BW = 1280 + 16 + 42, BH = 720 + 16 + 16;
@@ -1112,26 +1119,26 @@ function fitScale() {
   const pickEl = document.querySelector(".page-jump");
   const pick = pickEl ? pickEl.getBoundingClientRect() : null;
 
-  function fit(top) {
-    const beside = Math.min((vw - 2 * (arrow + 6)) / BW, (vh - top - M) / BH);
-    const below  = Math.min((vw - 2 * M) / BW, (vh - top - arrow) / BH);
-    return beside >= below ? { s: beside, bottom: M } : { s: below, bottom: arrow };
+  // vm = the margin kept ABOVE AND BELOW the book — always the same both ways, so
+  // the book stays vertically centred.
+  function fit(vm) {
+    const beside = Math.min((vw - 2 * (arrow + 6)) / BW, (vh - 2 * vm) / BH);
+    const below  = Math.min((vw - 2 * M) / BW, (vh - 2 * Math.max(vm, arrow)) / BH);
+    return Math.max(beside, below);
   }
-  // First try using the full height. If the book then reaches under the picker,
-  // reserve the picker's band at the top and fit again.
-  let top = M, f = fit(top);
-  if (pick && pick.bottom > 0 && (vw - BW * f.s) / 2 < pick.right + 8) {
-    top = Math.max(M, pick.bottom + 8);
-    f = fit(top);
+  // First try the plain margin. If the book then reaches under the picker, widen
+  // the top AND bottom margin to clear it and fit again.
+  let s = fit(M);
+  if (pick && pick.bottom > 0 && (vw - BW * s) / 2 < pick.right + 8) {
+    s = fit(Math.max(M, pick.bottom - vTop + 8));
   }
-  const s = Math.max(0.1, f.s);
+  s = Math.max(0.1, s);
 
-  // Centre the book in the space left between top and bottom, measured against the
-  // stage the .flip-scale layer is positioned in (it is not the full viewport).
+  // Centre the book in the visible area, measured against the stage the
+  // .flip-scale layer is positioned in (it is not the full viewport).
   const stage = flipScaleEl.parentElement.getBoundingClientRect();
-  const cy = top + (vh - top - f.bottom) / 2;
-  const dy = cy - (stage.top + stage.height / 2);
-  const dx = vw / 2 - (stage.left + stage.width / 2) - 13 * s;  // offset the board's uneven overhang
+  const dy = vTop + vh / 2 - (stage.top + stage.height / 2);
+  const dx = vLeft + vw / 2 - (stage.left + stage.width / 2) - 13 * s;  // offset the board's uneven overhang
   flipScaleEl.style.setProperty("--book-scale", s.toFixed(4));
   flipScaleEl.style.setProperty("--book-dx", dx.toFixed(1) + "px");
   flipScaleEl.style.setProperty("--book-dy", dy.toFixed(1) + "px");
@@ -1935,6 +1942,9 @@ function onViewportChange() {
   if (lbdStage && lbdStage.classList.contains("visible") && !lbdFullscreen) positionLbdStage();
 }
 window.addEventListener("resize", onViewportChange);
+// Mobile browser bars sliding in and out change the visible area without always
+// firing a window resize.
+if (window.visualViewport) window.visualViewport.addEventListener("resize", onViewportChange);
 window.addEventListener("orientationchange", onViewportChange);
 
 /* ---- Block ALL zoom (pinch, double-tap, ctrl+wheel, ctrl +/-) ------------
