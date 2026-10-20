@@ -1095,12 +1095,46 @@ let _homeTimer = null;   // pending "cover finished closing → back to the cove
    normal/large screens (there the 0.84 factor is the smaller of the two); it only
    shrinks the book a little on small screens so the arrows + progress stay visible.
    Only this CSS transform scale changes, so the paper curl is never distorted. */
+/* Grow the book as close to the screen edges as it can go, keeping an even margin,
+   while staying clear of the page picker (top-left) and the flip arrows (bottom
+   corners). Rather than reserving a fixed band for the controls on every side, it
+   tries the two layouts that actually fit — arrows BESIDE the book, or BELOW it —
+   and keeps whichever gives the bigger book. Works the same on phones (landscape),
+   tablets and desktops. */
 function fitScale() {
-  const CTRL = 64;                                   // min top/bottom room kept for the controls
-  const availW = window.innerWidth * 0.88;           // leave breathing space on the left + right
-  const availH = Math.min(window.innerHeight * 0.80, window.innerHeight - CTRL * 2);
-  const s = Math.min(availW / 1280, availH / 720);
+  const vw = window.innerWidth, vh = window.innerHeight;
+  // The book's visible footprint in design px: the 1280×720 pages plus the
+  // hardcover board around them (.book-frame overhangs 16px, and 42px on the right).
+  const BW = 1280 + 16 + 42, BH = 720 + 16 + 16;
+  const M = Math.max(12, Math.min(vw, vh) * 0.035);      // the margin kept on every side
+  // Corner arrows: size clamp(52px, 6vw, 70px) at clamp(12px, 2.5vw, 34px) from the edge.
+  const arrow = Math.min(70, Math.max(52, vw * 0.06)) + Math.min(34, Math.max(12, vw * 0.025));
+  const pickEl = document.querySelector(".page-jump");
+  const pick = pickEl ? pickEl.getBoundingClientRect() : null;
+
+  function fit(top) {
+    const beside = Math.min((vw - 2 * (arrow + 6)) / BW, (vh - top - M) / BH);
+    const below  = Math.min((vw - 2 * M) / BW, (vh - top - arrow) / BH);
+    return beside >= below ? { s: beside, bottom: M } : { s: below, bottom: arrow };
+  }
+  // First try using the full height. If the book then reaches under the picker,
+  // reserve the picker's band at the top and fit again.
+  let top = M, f = fit(top);
+  if (pick && pick.bottom > 0 && (vw - BW * f.s) / 2 < pick.right + 8) {
+    top = Math.max(M, pick.bottom + 8);
+    f = fit(top);
+  }
+  const s = Math.max(0.1, f.s);
+
+  // Centre the book in the space left between top and bottom, measured against the
+  // stage the .flip-scale layer is positioned in (it is not the full viewport).
+  const stage = flipScaleEl.parentElement.getBoundingClientRect();
+  const cy = top + (vh - top - f.bottom) / 2;
+  const dy = cy - (stage.top + stage.height / 2);
+  const dx = vw / 2 - (stage.left + stage.width / 2) - 13 * s;  // offset the board's uneven overhang
   flipScaleEl.style.setProperty("--book-scale", s.toFixed(4));
+  flipScaleEl.style.setProperty("--book-dx", dx.toFixed(1) + "px");
+  flipScaleEl.style.setProperty("--book-dy", dy.toFixed(1) + "px");
   // keep the page-turn hint glued to the forward arrow when the viewport changes
   if (flipHint && flipHint.classList.contains("show")) positionFlipHint();
 }

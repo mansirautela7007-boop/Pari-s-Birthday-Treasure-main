@@ -103,9 +103,12 @@
   .flip-scale {
     position: absolute; top: 50%; left: 50%;
     width: 1280px; height: 720px;
-    transform: translate(-50%, -50%) scale(var(--book-scale, 0.5));
+    /* --book-dx / --book-dy: fitScale() nudges the book off-centre so it clears
+       the page picker and the corner arrows while filling the rest of the screen. */
+    transform: translate(calc(-50% + var(--book-dx, 0px)), calc(-50% + var(--book-dy, 0px)))
+               scale(var(--book-scale, 0.5));
     transform-origin: center center;
-    perspective: 2400px;                         /* depth for the 3D book */
+    perspective: 2400px;                       /* depth for the 3D book */
     --pw: 1280px; --ph: 720px; --thick: 42px;   /* fixed page-block dimensions */
   }
 
@@ -186,8 +189,15 @@
     padding: 7px 32px 7px 15px; margin: 0; cursor: pointer;
     -webkit-appearance: none; appearance: none;
     box-shadow: 0 3px 12px rgba(0,0,0,0.45);
-    max-width: 44vw; text-overflow: ellipsis;
+    /* A FIXED width, not the width of the longest page title: a native <select>
+       otherwise sizes itself to its widest option and sprawled across the screen. */
+    width: clamp(118px, 15vw, 190px); max-width: 44vw;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     transition: background-color 160ms ease, border-color 160ms ease;
+  }
+  /* Phones in landscape: a slimmer pill so it takes less of the short screen. */
+  @media (max-height: 500px) {
+    .page-jump select { padding: 5px 28px 5px 12px; background-position: right 10px center; }
   }
   .page-jump select:hover { background-color: rgba(84,62,41,0.95); border-color: rgba(246,223,140,0.85); }
   .page-jump select:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
