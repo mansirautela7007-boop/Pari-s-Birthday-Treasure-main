@@ -1101,6 +1101,9 @@ let _homeTimer = null;   // pending "cover finished closing → back to the cove
    tries the two layouts that actually fit — arrows BESIDE the book, or BELOW it —
    and keeps whichever gives the bigger book. Works the same on phones (landscape),
    tablets and desktops. */
+// False until the scene's 900ms entrance animation (sceneIn: a translate + scale)
+// has finished — measuring the book while it is still animating would be wrong.
+let sceneSettled = false;
 function fitScale() {
   // The VISIBLE area: visualViewport where it exists (mobile browser
   // bars), otherwise the window. Ignored while pinch-zoomed, so zooming in to look
@@ -1138,10 +1141,26 @@ function fitScale() {
   // .flip-scale layer is positioned in (it is not the full viewport).
   const stage = flipScaleEl.parentElement.getBoundingClientRect();
   const dy = vTop + vh / 2 - (stage.top + stage.height / 2);
-  const dx = vLeft + vw / 2 - (stage.left + stage.width / 2) - 13 * s;  // offset the board's uneven overhang
+  let dx = vLeft + vw / 2 - (stage.left + stage.width / 2) - 13 * s;  // offset the board's uneven overhang
   flipScaleEl.style.setProperty("--book-scale", s.toFixed(4));
   flipScaleEl.style.setProperty("--book-dx", dx.toFixed(1) + "px");
   flipScaleEl.style.setProperty("--book-dy", dy.toFixed(1) + "px");
+
+  // MEASURE AND CORRECT. The maths above assumes where the stage sits; real mobile
+  // browsers (address bars, safe areas, late layout) do not always agree. So read
+  // where the board ACTUALLY landed and shift it onto the exact centre of the
+  // visible area. Skipped while the scene's entrance animation is still scaling
+  // it, since the measurement would be off; fitScale() runs again once it settles.
+  const frameEl = flipScaleEl.querySelector(".book-frame");
+  if (frameEl && sceneSettled) {
+    const r = frameEl.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      dx += (vLeft + vw / 2) - (r.left + r.width / 2);
+      const dyFix = dy + (vTop + vh / 2) - (r.top + r.height / 2);
+      flipScaleEl.style.setProperty("--book-dx", dx.toFixed(1) + "px");
+      flipScaleEl.style.setProperty("--book-dy", dyFix.toFixed(1) + "px");
+    }
+  }
   // keep the page-turn hint glued to the forward arrow when the viewport changes
   if (flipHint && flipHint.classList.contains("show")) positionFlipHint();
 }
@@ -1946,6 +1965,19 @@ window.addEventListener("resize", onViewportChange);
 // firing a window resize.
 if (window.visualViewport) window.visualViewport.addEventListener("resize", onViewportChange);
 window.addEventListener("orientationchange", onViewportChange);
+// Re-fit once the layout has really settled: after the scene's entrance animation,
+// after everything has loaded, and when the page is restored from the back/forward
+// cache. Mobile browsers often finish sizing the viewport only after first paint.
+(function () {
+  const sceneEl = document.querySelector(".scene");
+  function settle() { if (sceneSettled) return; sceneSettled = true; fitScale(); }
+  if (sceneEl) sceneEl.addEventListener("animationend", function (e) {
+    if (e.target === sceneEl) settle();
+  });
+  setTimeout(settle, 1200);            // fallback: reduced motion / no animation event
+  window.addEventListener("load", function () { fitScale(); setTimeout(fitScale, 300); });
+  window.addEventListener("pageshow", fitScale);
+})();
 
 /* ---- Block ALL zoom (pinch, double-tap, ctrl+wheel, ctrl +/-) ------------
    The book is fixed-layout, so zoom would only break it. */
