@@ -1,0 +1,31 @@
+# OS / editor junk
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Dependencies + build scratch
+node_modules/
+tools/node_modules/
+tools/*.json
+out/
+*.log
+
+# Backups of the pre-optimisation media (keep them out of the repo)
+*.orig
+*.bak
+*-backup.*
+assets-original/
+
+# VIDEO MASTERS. 1.mp4, 3.mp4 and 4.mp4 are the H.264 sources the shipped VP9
+# scenes were encoded from. Nothing in the book ever requests them — the deploy
+# already strips them (see .vercelignore) — but they were still TRACKED, so they
+# travelled with the repo: 18.6 MB of a 35.4 MB tree, and 56% of the GitHub
+# "Download ZIP", for files no visitor can reach.
+# Untracked rather than deleted: they stay on the machine that builds the book, so
+# the scenes can be re-encoded from source. Measured before doing this — the
+# shipped encodes are within ~1.3 VMAF of anything a higher bitrate can buy from
+# these masters, so nothing of value is waiting to be recovered from them.
+FLIPBOOK/assets/*.mp4

@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Which coin is this?</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230e1330'/%3E%3Cpath d='M16 5.5 L18.9 12.6 L26.5 13.2 L20.7 18.1 L22.5 25.5 L16 21.5 L9.5 25.5 L11.3 18.1 L5.5 13.2 L13.1 12.6 Z' fill='%23f6b81e'/%3E%3C/svg%3E">
+<!--
+  ============================================================================
+  WHICH COIN IS THIS?  —  10 Paise identification
+  ----------------------------------------------------------------------------
+  • Loaded by the flipbook into #lbdFrame (see index.html / script.js). It plays
+    ENTIRELY INSIDE THE PAGE — it never asks the book for fullscreen. The one
+    message it sends back is:
+        {source:"lbd", type:"lbd-complete"}  → the book lights its forward arrow (the reader turns the page)
+  • Flow: question → (incorrect → question)* → correct → completed  (the old
+    opening "This is a N Paise coin." line was removed — it gave the answer away)
+  • A wrong pick shows its red fill and shakes — no words change, the question
+    stays up (the "Try again!" line was removed on request) — then the
+    question comes back clean so the child starts fresh.
+  • Speech box and background are IDENTICAL to the other activity pages, so the
+    whole activity block reads as one set. The coin is centred on the same line
+    the banknotes sit on (stage y 348), so nothing jumps between pages.
+  • Designed at a fixed 1280×720 and scaled to fit (same trick as .flip-scale in
+    the book), so it can never reflow or break.
+  • Art comes from ../assets/Currency/ — no base64, so it stays small. The coin
+    is the only new picture; the speech-box art already carries the portrait and
+    the bunting.
+  ============================================================================
+-->
+<style>
+/* Google Fonts — trimmed. Nunito was requested on every activity load and
+   rendered NOTHING: body names it, but every element that actually holds text
+   (.dlgText, .scoreVal, .opt labels) sets Baloo 2. Baloo 2 is cut to the
+   weights this file really uses. Keep this URL byte-identical to the one the
+   parent preloader warms (ACTIVITY_FONT_CSS in script.js). */
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&display=swap');
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow:hidden}
+body{
+  --ink:#2b1a10;
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  color:var(--ink);
+  /* Same picture behind the 1280×720 stage, so if the box we're given isn't
+     exactly 16:9 the letterbox edges blend instead of showing a flat slab. */
+  background:#2a1c33 url(../assets/Currency/background.webp) center/cover no-repeat;
+  -webkit-tap-highlight-color:transparent;
+  overscroll-behavior:none;
+  user-select:none; -webkit-user-select:none;
+}
+
+/* ---- fixed 1280×720 stage, scaled by JS to fill whatever box we're in ---- */
+#fit{
+  position:absolute; left:0; top:0; width:1280px; height:720px;
+  transform-origin:0 0; will-change:transform;
+}
+.scene{
+  position:absolute; inset:0; overflow:hidden;
+  background:#2a1c33 url(../assets/Currency/background.webp) center/cover no-repeat;
+}
+
+/* ==========================================================================
+   SPEECH BOX  —  same art, same place and same type as every other activity
+   ========================================================================== */
+.dialogue{
+  /* 897x110 keeps the art's own 8.1527 aspect (1655x203), so the <img> filling
+     this box cannot squash it.
+       The artwork was REPLACED with a longer, flatter pill: the old file was
+     1080x178 (6.0674) and this box was 667x110 to suit it. HEIGHT is held at 110
+     and the WIDTH grew to 897, rather than the other way round, because the new
+     aspect at 667 wide forces the height down to 82px — and 82px leaves a pill
+     interior of only 43px, which will not hold the two lines of 21px text
+     (49.6px) this box has to take. At 110 tall the interior is 57.4px and the
+     pair fits with room over.
+       Right edge lands at 60+897 = 957px. That stays clear of the score badge on
+     the find-the-* pages, whose left edge sits near 1090px. */
+  position:absolute; left:60px; top:32px; width:897px; height:110px;
+  z-index:30; pointer-events:none;
+}
+.dialogue>img{position:absolute; inset:0; width:100%; height:100%; display:block}
+/* Sits in the clear part of the pill. RE-MEASURED off the replacement
+   dialogue-box.webp (1655x203), because every one of these numbers came off the
+   old 1080x178 art:
+       portrait circle ends       6.89%
+       pill's left stroke clears  9.12%
+       bunting begins            89.55%
+       pill INTERIOR             24.63%..76.85% of the height, centre 50.74%
+   The centre is 50.74% and not 50% because the portrait hangs below the pill and
+   drags the whole art's centre down. (The old file measured 8.9% / 89.4% / 51.7%
+   — near enough to look the same, but the aspect moved far more than the
+   landmarks did, which is what forced the box resize above.)
+     left/width span 11%..87.5%, leaving ~17px of air inside the pill either side
+   at the 897px box width. The type is 21px, down from 23px, from when the note
+   lines went from "₹500" to "five-hundred-rupee" and the longest question grew to
+   55 characters. On the wider pill that line now fits on ONE line — 23px would
+   fit too, so this is headroom rather than a necessity. */
+.dlgText{
+  position:absolute; left:11%; width:76.5%; top:50.74%; transform:translateY(-50%);
+  font-family:'Baloo 2','Trebuchet MS',system-ui,sans-serif; font-weight:800;
+  font-size:26px; line-height:1.18; color:var(--ink);
+  text-align:left;
+}
+.dlgText.pop{animation:dlgPop .5s cubic-bezier(.2,1.5,.35,1) both}
+@keyframes dlgPop{0%{scale:.9; opacity:.4}60%{scale:1.04}100%{scale:1; opacity:1}}
+
+/* ==========================================================================
+   THE COIN  —  centred on the stage, the same as the banknotes
+   ========================================================================== */
+.coin{
+  /* CENTRED ON THE PAGE, both axes — it was already centred horizontally but sat
+     11.5px above the stage's middle. Auto margins for the same reason as the notes. */
+  position:absolute; inset:0; margin:auto; width:370px; height:370px;
+  z-index:5; display:block; pointer-events:none;
+  filter:drop-shadow(0 14px 22px rgba(30,14,4,.5));
+  opacity:0; scale:.2;
+}
+/* Runs once, on load, and finishes at exactly scale 1 — the coin is never
+   moved or resized again for the rest of the activity. */
+.coin.enter{animation:coinIn .9s cubic-bezier(.22,.9,.24,1) .12s both}
+@keyframes coinIn{
+  0%  {opacity:0; scale:.20}
+  45% {opacity:1; scale:1.09}
+  68% {scale:.965}
+  86% {scale:1.015}
+  100%{opacity:1; scale:1}
+}
+
+/* ==========================================================================
+   THE TWO OPTIONS
+   ========================================================================== */
+.options{
+  position:absolute; left:0; right:0; top:571px; z-index:20;
+  display:flex; justify-content:center; gap:171px;
+}
+.opt{
+  position:relative;
+  width:260px; height:75px;
+  font-family:'Baloo 2','Trebuchet MS',system-ui,sans-serif;
+  font-weight:800; font-size:32px; line-height:1; color:var(--ink);
+  background:#fff; border:4px solid #E2741D; border-radius:999px;
+  cursor:pointer; touch-action:manipulation; -webkit-appearance:none; appearance:none;
+  display:grid; place-items:center;
+  box-shadow:0 8px 18px -8px rgba(30,14,4,.6);
+  opacity:0; pointer-events:none;
+  transition:background-color .2s ease, border-color .2s ease, opacity .3s ease;
+}
+/* Invisible finger-room. Nothing is drawn and the visible pill is untouched;
+   the 171px gap between the two means these never overlap. */
+.opt::before{content:''; position:absolute; inset:-14px; border-radius:999px}
+
+/* the options arrive with a soft upward pop when the question appears */
+.scene[data-phase="question"] .opt,
+.scene[data-phase="incorrect"] .opt,
+.scene[data-phase="correct"] .opt,
+.scene[data-phase="completed"] .opt{opacity:1; pointer-events:auto}
+.opt.pop-in{animation:optIn .44s cubic-bezier(.28,1.35,.4,1) both}
+.opt:nth-child(2).pop-in{animation-delay:.09s}
+@keyframes optIn{
+  from{opacity:0; translate:0 22px; scale:.94}
+  to  {opacity:1; translate:0 0;    scale:1}
+}
+.opt:active:not(:disabled){scale:.97}
+.opt:focus-visible{outline:4px solid #1B6BE4; outline-offset:5px}
+.opt:disabled{cursor:default}
+
+/* wrong pick — light red fill, red outline, gentle shake */
+.opt.is-wrong{background:#FFBDBD; border-color:#D10000}
+.opt.shake{animation:shake .44s cubic-bezier(.36,.07,.19,.97) both}
+@keyframes shake{
+  10%,90%{translate:-3px 0}
+  20%,80%{translate:6px 0}
+  30%,50%,70%{translate:-9px 0}
+  40%,60%{translate:9px 0}
+}
+
+/* right pick — light green fill, bright green outline, one success bounce.
+   The glow rises and falls inside the animation so the resting state stays
+   clean once it has finished. */
+.opt.is-right{background:#D4FFD4; border-color:#3CC027}
+.opt.bounce{animation:okBounce .62s cubic-bezier(.3,1.5,.42,1) both}
+@keyframes okBounce{
+  0%  {scale:1;     box-shadow:0 8px 18px -8px rgba(30,14,4,.6), 0 0 0 0 rgba(60,192,39,0)}
+  30% {scale:1.075; box-shadow:0 8px 18px -8px rgba(30,14,4,.6), 0 0 19px 5px rgba(60,192,39,.55)}
+  62% {scale:.985;  box-shadow:0 8px 18px -8px rgba(30,14,4,.6), 0 0 14px 3px rgba(60,192,39,.28)}
+  100%{scale:1;     box-shadow:0 8px 18px -8px rgba(30,14,4,.6), 0 0 0 0 rgba(60,192,39,0)}
+}
+
+/* ---- the finish-line confetti (see popConfetti below) ----
+   Lifted verbatim from the magnifier activities so the two families cannot drift.
+   overflow:hidden means the pieces are clipped to the stage as they fall past the
+   bottom edge instead of stretching the page. */
+.confetti{position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:40}
+.confetti i{position:absolute; top:-26px; display:block; animation:fall linear forwards}
+@keyframes fall{
+  0%{opacity:1; translate:0 0; rotate:0deg}
+  100%{opacity:.9; translate:var(--drift) 800px; rotate:540deg}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important; transition:none !important}
+  .coin{opacity:1; scale:1}
+}
+</style>
+</head>
+<body>
+
+<div id="fit">
+ <div class="scene" id="scene" data-phase="question">
+
+  <div class="dialogue">
+    <img src="../assets/Currency/dialogue-box.webp" alt="" draggable="false">
+    <span class="dlgText" id="msg" aria-live="polite">Which coin is this?</span>
+  </div>
+
+  <img class="coin" id="coin" src="../assets/Currency/coin-10-paise.webp"
+       alt="An Indian 10 Paise coin from 1984" draggable="false">
+
+  <div class="options" id="options" role="group" aria-label="Which coin is this?">
+    <button class="opt" type="button" data-id="rupees" disabled aria-label="10 Rupees">10 Rupees</button>
+    <button class="opt" type="button" data-id="paise"  disabled aria-label="10 Paise">10 Paise</button>
+  </div>
+
+  <!-- Filled only when the activity is finished — see popConfetti(). -->
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
+
+ </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ========================================================================
+     TALKING TO THE BOOK
+     If this page is ever opened on its own, `parent === window` and the post is
+     a harmless no-op, so it still works standalone.
+     ====================================================================== */
+  function tell(type) {
+    try { window.parent.postMessage({ source: "lbd", type: type }, "*"); } catch (e) {}
+  }
+
+  /* ========================================================================
+     FIT  —  the design is a fixed 1280×720; scale it to fill whatever box the
+     book gives us. Never reflows, and never goes fullscreen.
+     ====================================================================== */
+  var BASE_W = 1280, BASE_H = 720;
+  var fitEl = document.getElementById("fit");
+  function fit() {
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var s = Math.min(vw / BASE_W, vh / BASE_H);
+    fitEl.style.transform = "translate(" + ((vw - BASE_W * s) / 2) + "px," +
+                                           ((vh - BASE_H * s) / 2) + "px) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  window.addEventListener("orientationchange", fit);
+  // The book sets this frame's src and THEN resizes it to the page rectangle, so
+  // a plain resize listener can miss the change that matters and leave us scaled
+  // to a stale box (letterboxed inside the page). Watching the root element
+  // catches every size change whatever the order.
+  if (window.ResizeObserver) {
+    new ResizeObserver(fit).observe(document.documentElement);
+  }
+  fit();
+
+  /* ========================================================================
+     CONFIGURATION
+     ====================================================================== */
+  var CORRECT_ID       = "paise";   // the second pill is the answer
+  var WRONG_MS         = 800;       // how long a wrong pick stays marked
+  var BOUNCE_MS        = 620;       // success animation, then the phase is "completed"
+  var ADVANCE_AFTER_MS = 2200;      // how long the win sits before the book turns over
+  var TAP_GUARD_MS     = 160;       // swallow double taps during animations
+
+  var MESSAGES = {
+    question:  "Which coin is this?",
+    correct:   "Wonderful! It's a 10 Paise coin.",
+    completed: "Wonderful! It's a 10 Paise coin."
+  };
+
+  /* ========================================================================
+     SOUND — synthesised, with ONE exception: the wrong-answer buzzer is a real
+     recording (sfx/incorrect buzzer.mp3), because a convincing buzzer is not
+     something two oscillators do well. Everything else is generated here, so the
+     activity still loads almost no audio. Any synthesised sound still playing is
+     faded out before a new one starts, so rapid taps never stack.
+     The context is created inside a tap, which is a user gesture, so browsers
+     allow it without needing a Start button.
+     ====================================================================== */
+  var Sfx = (function () {
+    var ctx = null, live = [];
+
+    function wake() {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!ctx) { try { ctx = new AC(); } catch (e) { return null; } }
+      if (ctx.state === "suspended") ctx.resume();
+      return ctx;
+    }
+
+    function stopAll() {
+      var t = ctx.currentTime;
+      live.forEach(function (n) {
+        try {
+          n.g.gain.cancelScheduledValues(t);
+          n.g.gain.setTargetAtTime(0.0001, t, 0.012);
+          n.o.stop(t + 0.08);
+        } catch (e) {}
+      });
+      live = [];
+    }
+
+    function note(t0, freq, dur, opt) {
+      opt = opt || {};
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = opt.type || "sine";
+      o.frequency.setValueAtTime(freq, t0);
+      if (opt.bend) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq * opt.bend), t0 + dur);
+      var peak = opt.gain === undefined ? 0.1 : opt.gain;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(peak, t0 + 0.014);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t0); o.stop(t0 + dur + 0.03);
+      live.push({ o: o, g: g });
+    }
+
+    return {
+      /* bright rising triad */
+      correct: function () {
+        if (!wake()) return;
+        stopAll();
+        var t = ctx.currentTime;
+        [523.25, 659.25, 783.99].forEach(function (f, i) {
+          note(t + i * 0.075, f, 0.34, { type:"triangle", gain:0.11 });
+        });
+        note(t + 0.225, 1046.5, 0.46, { type:"sine", gain:0.07 });
+      },
+      /* WRONG ANSWER — the recorded buzzer from sfx/, with the synthesised nudge
+         below as the fallback, so a wrong pick is never answered by silence.
+         wake() is no longer a hard requirement: it only exists to stop any
+         correct-answer notes still ringing, and a device with no Web Audio at all
+         should still get the buzz. */
+      incorrect: function () {
+        if (wake()) stopAll();
+        if (!playBuzzer()) Sfx.incorrectTone();
+      },
+      /* soft, low, unhurried — the original nudge. Now only the FALLBACK, and it has
+         to be reachable from outside because playBuzzer()'s failure can arrive
+         ASYNCHRONOUSLY, long after incorrect() has returned (a rejected play()
+         promise), at which point there is nothing left on the stack to fall back to. */
+      incorrectTone: function () {
+        if (!wake()) return;
+        var t = ctx.currentTime;
+        note(t, 311.13, 0.17, { type:"triangle", gain:0.075 });
+        note(t + 0.13, 233.08, 0.28, { type:"triangle", gain:0.075, bend:0.94 });
+      }
+    };
+  })();
+
+  /* ========================================================================
+     THE BUZZER  —  sfx/incorrect buzzer.mp3
+     ------------------------------------------------------------------------
+     The only sound in this activity that is a FILE rather than synthesised.
+
+     ONE element, rewound rather than recreated. A child who taps wrong three times
+     running must hear three buzzes, and `currentTime = 0` restarts the same element
+     without spinning up a new decoder per tap.
+
+     mp3 DELIBERATELY, not the .ogg the voice-overs use. These activity documents have
+     no codec-probe of their own — the book's _oggToMp3 lives in ../script.js and is
+     not shared in here — and mp3 is the one container every browser that can run this
+     book will play. So the buzzer is audible even on the older iPads where the .ogg
+     narration is already silent.
+
+     It always plays inside a click, so autoplay policy never blocks it; the parent
+     preloads the file (see script.js §3c) so the first buzz is not a fetch behind a
+     tap.
+     ====================================================================== */
+  var BUZZ_SRC = "../sfx/incorrect%20buzzer.mp3";
+  var buzzEl = null;
+  try {
+    buzzEl = new Audio(BUZZ_SRC);
+    buzzEl.preload = "auto";
+  } catch (e) { buzzEl = null; }
+
+  /* Returns whether the file was handed to the browser at all — NOT whether it will
+     be heard. A rejected play() settles later, so the tone fallback is wired into the
+     rejection as well; deciding it here alone would leave a blocked buzzer silent. */
+  function playBuzzer() {
+    if (!buzzEl) return false;
+    try {
+      buzzEl.currentTime = 0;
+      var p = buzzEl.play();
+      if (p && p.catch) p.catch(function () { Sfx.incorrectTone(); });
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* ========================================================================
+     STATE  —  "question" | "incorrect" | "correct" | "completed"
+     ====================================================================== */
+  var scene = document.getElementById("scene");
+  var coin  = document.getElementById("coin");
+  var msgEl = document.getElementById("msg");
+  var confEl = document.getElementById("confetti");
+
+  /* ========================================================================
+     CONFETTI  —  the small burst every activity ends on
+     ------------------------------------------------------------------------
+     Deliberately IDENTICAL in all sixteen activities. The magnifier pages and the
+     quizzes are different games, but finishing one should feel the same wherever
+     the child happens to be in the book, so the piece count, the size range, the
+     palette and the fall are one spec rather than two that drifted apart.
+
+     Small on purpose: this is a full-stage shower, and at the size it was first
+     built (56 pieces, 7-17px) it read as the page celebrating rather than the
+     child being congratulated.
+
+     The pieces fall out of the bottom of an overflow:hidden box and are then
+     cleared, so replaying an activity cannot leave the last burst behind them.
+     ====================================================================== */
+  var CONFETTI_COLOURS = ["#F5A524","#E4572E","#17877A","#F2C438","#8E4B8B","#3AA76D"];
+  var CONFETTI_PIECES = 40;
+  var confettiTimer = null;
+  function popConfetti() {
+    if (!confEl) return;
+    confEl.innerHTML = "";
+    for (var ci = 0; ci < CONFETTI_PIECES; ci++) {
+      var csize = 5 + Math.random() * 6, cround = Math.random() > 0.6;
+      var cbit = document.createElement("i");
+      cbit.style.left = (Math.random() * 100) + "%";
+      cbit.style.width = csize + "px";
+      cbit.style.height = (cround ? csize : csize * 0.5) + "px";
+      cbit.style.background = CONFETTI_COLOURS[ci % CONFETTI_COLOURS.length];
+      cbit.style.borderRadius = cround ? "50%" : "1px";
+      cbit.style.animationDuration = (1.9 + Math.random() * 1.3) + "s";
+      cbit.style.animationDelay = (Math.random() * 0.5) + "s";
+      cbit.style.setProperty("--drift", ((Math.random() - 0.5) * 120) + "px");
+      confEl.appendChild(cbit);
+    }
+    window.clearTimeout(confettiTimer);
+    confettiTimer = window.setTimeout(function () { confEl.innerHTML = ""; }, 5000);
+  }
+
+  var opts  = Array.prototype.slice.call(document.querySelectorAll(".opt"));
+
+  var phase = "question", lastTap = 0, timer = null, popSpent = false;
+
+  // timer now holds afterVo's canceller rather than a timeout id
+  function clearTimer() { if (timer) { timer(); timer = null; } }
+
+  /* ========================================================================
+     VOICE-OVER — one recording per line, spoken as that line appears.
+     Ogg/Opus mono, converted from the supplied takes with the same settings
+     tools/convert-audio.js uses for the book's own audio.
+     ------------------------------------------------------------------------
+     Keyed BY THE LINE TEXT ITSELF, so a line and its clip cannot drift apart:
+     reword the line and the key stops matching, which surfaces the wrong
+     recording immediately instead of quietly playing the old one. Several lines
+     in MESSAGES above were re-worded to match what the recordings actually say
+     — the takes cannot be re-cut, and text disagreeing with audio is worse than
+     either alone in something a child is read to from.
+
+     Autoplay: the first line is spoken before the child has touched anything,
+     which browsers normally block. It works because the book loads this activity
+     in an iframe carrying allow="autoplay" (see #lbdFrame in ../index.html). If a
+     browser refuses anyway the rejected promise is caught and the clip is retried
+     on the first real tap.
+     ====================================================================== */
+  var VO = {};
+  VO[MESSAGES.question]  = "../assets/vo/coin-question.ogg";   // shared
+  VO[MESSAGES.correct]   = "../assets/vo/coin-10-correct.ogg";
+
+  var voEls = {}, voNow = null, voPending = null;
+  for (var voKey in VO) {
+    var voEl = new Audio(VO[voKey]);
+    voEl.preload = "auto";
+    voEls[voKey] = voEl;
+  }
+
+  /* One voice at a time: a new line cuts the previous clip off rather than
+     talking over it. */
+  function playVo(line) {
+    var a = voEls[line];
+    if (voNow && voNow !== a) {
+      try { voNow.pause(); voNow.currentTime = 0; } catch (e) {}
+    }
+    voNow = a || null;
+    if (!a) return;                        // a line with no recording: stay silent
+    try {
+      a.currentTime = 0;
+      var p = a.play();
+      /* Only an autoplay REFUSAL is worth retrying. Cutting a clip off above to
+         make way for the next line also rejects its play() promise, with
+         AbortError — that one is us, on purpose. */
+      if (p && p.catch) p.catch(function (err) {
+        if (!err || err.name === "NotAllowedError") voPending = line;
+      });
+    } catch (e) { voPending = line; }
+  }
+  // Retried on the first real tap, and only if that line is still on screen.
+  function retryPendingVo() {
+    if (!voPending) return;
+    var line = voPending;
+    voPending = null;
+    if (msgEl.textContent === line) playVo(line);
+  }
+
+  /* Runs fn once `line`'s clip has finished. The clip is the trigger; the timer
+     is only a safety net for when there is no clip to wait for.
+
+     Deciding that from el.duration did not work: the duration is usually still
+     unknown at this point and loadedmetadata does not reliably arrive afterwards,
+     so the short delay kept winning and cutting the very clip it was backing up
+     (WRONG_MS is 800ms against a 1.5s clip, for instance). What IS knowable is
+     whether the clip is playing — el.paused right now,
+     and the `playing` event if it starts a moment later:
+       · not playing -> keep the activity's original short delay, because no
+                        `ended` is ever coming (autoplay refused, missing file,
+                        a device with no audio)
+       · playing     -> stretch to VO_CAP_MS and let `ended` do the work, so the
+                        line is never cut off mid-sentence
+     VO_CAP_MS is longer than any clip in the book, so it only ever fires if a
+     clip stalls outright. */
+  var VO_CAP_MS = 9000;
+  function afterVo(line, fallbackMs, fn) {
+    var spent = false, el = voEls[line], t = null;
+    function cleanup() {
+      window.clearTimeout(t);
+      if (el) {
+        el.removeEventListener("ended", go);
+        el.removeEventListener("playing", extend);
+      }
+    }
+    function go() { if (spent) return; spent = true; cleanup(); fn(); }
+    function extend() {
+      window.clearTimeout(t);
+      t = window.setTimeout(go, VO_CAP_MS);
+    }
+    t = window.setTimeout(go, fallbackMs);
+    if (el) {
+      el.addEventListener("ended", go);
+      el.addEventListener("playing", extend);
+      if (!el.paused) extend();        // already under way before we got here
+    }
+    return function () { spent = true; cleanup(); };
+  }
+
+  /* Backstop for the hand-back to the story. The real trigger is the winning
+     line's clip finishing; this only fires when it cannot play. Comfortably
+     longer than the longest take (5.1s) so it never pre-empts a live clip. */
+  var DONE_HANDOVER_MS = 7000;
+  /* The repeat test reads lastLine, NOT msgEl.textContent. The markup ships with
+     the opening line already printed in it, so comparing against the DOM made the
+     very first say() look like a repeat: it returned early and the opening
+     voice-over was never spoken. lastLine starts null, so the first call counts. */
+  var lastLine = null;
+  function say(line) {
+    if (lastLine === line) return;
+    lastLine = line;
+    playVo(line);                         // keep the audio in step with the text
+    msgEl.textContent = line;
+    msgEl.classList.remove("pop");
+    void msgEl.offsetWidth;               // restart the animation cleanly
+    msgEl.classList.add("pop");
+  }
+
+  /* Re-runs a CSS animation from the start instead of letting two overlap */
+  function restart(el, cls) {
+    opts.forEach(function (o) { o.classList.remove("shake", "bounce"); });
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+
+  /* The single place a phase change is applied. */
+  function setPhase(next, picked) {
+    phase = next;
+    scene.dataset.phase = next;
+  /* THE "TRY AGAIN" LINE HAS BEEN REMOVED. A wrong pick no longer changes what the
+     speech box says: the question stays up, and the feedback is carried by the disc's
+     own red outline, its shake and the soft nudge tone. The child is not told off,
+     and the question they still have to answer is still in front of them instead of
+     being replaced for a second and a half and then restored. */
+    say(next === "incorrect" ? MESSAGES.question : MESSAGES[next]);
+
+    opts.forEach(function (o) {
+      var isPicked = picked === o.dataset.id;
+      o.classList.toggle("is-wrong", isPicked && next === "incorrect");
+      o.classList.toggle("is-right", isPicked && (next === "correct" || next === "completed"));
+      // locked as soon as the right answer lands; both stay live otherwise
+      o.disabled = (next === "correct" || next === "completed");
+    });
+
+    if (next === "question" && !popSpent) {
+      opts.forEach(function (o) { o.classList.add("pop-in"); });
+    }
+  }
+
+  /* ========================================================================
+     CHOICES
+     ====================================================================== */
+  function choose(id, el) {
+    retryPendingVo();   // a real gesture: any autoplay-blocked clip may run
+    if (phase !== "question" && phase !== "incorrect") return;
+    var now = Date.now();
+    if (now - lastTap < TAP_GUARD_MS) return;     // no double taps mid animation
+    lastTap = now;
+    clearTimer();
+
+    if (id === CORRECT_ID) {
+      setPhase("correct", id);
+      restart(el, "bounce");
+      Sfx.correct();
+      popConfetti();
+      window.setTimeout(function () { setPhase("completed", id); }, BOUNCE_MS);
+      // let the celebration land, then hand the reader back to the story
+      /* Hand back only once the winning line has finished speaking — the clips run
+         3.3-3.9s and ADVANCE_AFTER_MS (2200ms) was cutting them off. */
+      afterVo(MESSAGES.correct, DONE_HANDOVER_MS, function () { tell("lbd-complete"); });
+    } else {
+      setPhase("incorrect", id);
+      restart(el, "shake");
+      Sfx.incorrect();
+      /* Clear the red mark after WRONG_MS. This used to be stretched to wait out
+         the "Try again!" recording; with no line to speak there is nothing to wait
+         for. Still afterVo (with no line) so `timer` stays a canceller. */
+      timer = afterVo(null, WRONG_MS, function () {
+        timer = null;
+        setPhase("question", null);
+      });
+    }
+  }
+
+  /* An element can only carry one `animation` at a time, so a spent class is
+     dropped as soon as it finishes. Without this, removing `shake` later would
+     let the pop-in animation run a second time. */
+  opts.forEach(function (o) {
+    o.addEventListener("animationend", function (e) {
+      if (e.animationName === "optIn")    o.classList.remove("pop-in");
+      if (e.animationName === "shake")    o.classList.remove("shake");
+      if (e.animationName === "okBounce") o.classList.remove("bounce");
+    });
+    /* One handler covers mouse, pen, touch and keyboard: a <button> fires click
+       for Enter and Space too, so no extra key handling is needed. */
+    o.addEventListener("click", function (e) {
+      e.preventDefault();                         // never submits or reloads
+      choose(o.dataset.id, o);
+    });
+  });
+
+  /* ========================================================================
+     START:  the coin arrives and the question is asked straight away
+     ------------------------------------------------------------------------
+     THE INTRODUCTION LINE IS GONE, on request. The activity used to open by saying
+     "This is a 10 Paise coin." and then ask "Which coin is this?" — which handed the
+     child the answer a moment before asking for it, so the question tested memory of
+     the last two seconds rather than recognition of the coin. It opens on the
+     question now.
+     There is therefore no phase to wait out: setPhase("question") runs immediately,
+     which is also what pops the two options in, and popSpent is set right afterwards
+     so a wrong answer coming back to this phase cannot pop them a second time.
+     ====================================================================== */
+  coin.classList.add("enter");
+  setPhase("question", null);
+  popSpent = true;
+
+  /* ========================================================================
+     SAY IT AGAIN  —  the question is re-read after eight still seconds
+     ------------------------------------------------------------------------
+     A child who has not answered may simply not have heard. The line is still on
+     screen, but it was read once, at the moment the page arrived, over a page turn.
+
+     THE CLIP ONLY. It goes through playVo(), not say(): say() is a no-op for a line
+     already showing (it guards on lastLine, which is what stops a wrong answer
+     re-popping the question), and re-popping the speech box would read as a NEW
+     instruction rather than the same one repeated.
+
+     Any touch or key restarts the eight seconds, so it never talks over a child who
+     is working, and it stops for good once they get it right.
+     ====================================================================== */
+  var IDLE_REPEAT_MS = 8000;
+  var repeatTimer = null;
+  function solved() { return phase === "correct" || phase === "completed"; }
+  function armRepeat() {
+    window.clearTimeout(repeatTimer);
+    repeatTimer = null;
+    if (solved()) return;
+    repeatTimer = window.setTimeout(function () {
+      repeatTimer = null;
+      if (solved()) return;
+      // Not while the page is hidden — it would be read to an empty room and the
+      // child would come back to silence. Wait and try again.
+      if (!document.hidden) playVo(MESSAGES.question);
+      armRepeat();
+    }, IDLE_REPEAT_MS);
+  }
+  ["pointerdown", "keydown", "touchstart"].forEach(function (evt) {
+    document.addEventListener(evt, armRepeat, { passive: true, capture: true });
+  });
+  armRepeat();
+
+  window.addEventListener("load", fit);
+})();
+</script>
+</body>
+</html>

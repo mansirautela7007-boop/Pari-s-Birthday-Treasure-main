@@ -1,0 +1,15 @@
+{
+    "liveServer.settings.port": 5504,
+    // Go Live serves the WORKSPACE root by default, which would land on a directory
+    // listing. The root is the MAIN folder — NOT FLIPBOOK — because the book reaches
+    // the game with "../MONEY%20CATCH%20MANIA/...", which climbs out of FLIPBOOK;
+    // rooting at FLIPBOOK would put the game above the root and 404 it.
+    // The main folder's index.html forwards straight to FLIPBOOK/index.html, so
+    // http://127.0.0.1:5504/ still opens the book in one click.
+    // The path is relative to the workspace root and must start with "/". The MAIN
+    // folder IS the workspace root here (it holds index.html, FLIPBOOK/ and MONEY
+    // CATCH MANIA/), so that is just "/". Naming the folder itself — e.g.
+    // "/Pari's Birthday Treasure" — makes Live Server look for that name INSIDE the
+    // workspace, which is the "Invalid Path in liveServer.settings.root" warning.
+    "liveServer.settings.root": "/"
+}

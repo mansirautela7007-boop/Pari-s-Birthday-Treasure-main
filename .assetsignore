@@ -1,0 +1,63 @@
+# Nothing here is needed to SERVE the book — keep it out of the deployed bundle.
+#
+# Netlify reads .netlifyignore, Vercel reads this file, Cloudflare Pages reads
+# .assetsignore; the three lists are kept identical on purpose.
+#
+# NOTE: these MUST sit at the REPOSITORY ROOT — that is both what a host serves and
+# where it looks for this file. They used to live one level down, inside a
+# "PARI'S BIRTHDAY TREASURE/" wrapper folder, and the consequence was invisible until
+# production was probed: Vercel never read this file at all, so every exclusion below
+# was ignored and the live site served 35.34 MB instead of 16.14 MB — the three .mp4
+# masters, BGM.ogg and FLIPBOOK/tools/ were all publicly fetchable. The same offset
+# left "/" with no index.html, so the site 404'd at its own root. One cause, both
+# symptoms; fixed by flattening the tree. KEEP IT FLAT.
+# The book reaches the game with "../MONEY%20CATCH%20MANIA/...", which climbs out of
+# FLIPBOOK — so FLIPBOOK cannot be the served root either. The root is here.
+
+# Build / conversion tooling (Node + ffmpeg, dev-machine only)
+FLIPBOOK/tools/
+node_modules/
+package.json
+package-lock.json
+
+# Design docs, notes and READMEs
+*.md
+docs/
+design/
+notes/
+
+# Backups and pre-optimisation sources. The PNG / MP4 masters the encodes were made
+# from are deliberately NOT in this folder at all — they are kept outside the
+# deliverable, so there is nothing here to exclude. These patterns stay as a guard
+# in case one is ever dropped in beside its encode.
+*.orig
+*.bak
+*-backup.*
+assets-original/
+out/
+FLIPBOOK/assets/*.png
+FLIPBOOK/assets/Currency/*.png
+
+# The background-music track SHIPS AGAIN. It was excluded while BGM_VOLUME was 0 —
+# that zero gated setting bgMusic.src, playBgMusic() AND the preloader entry, so no
+# visitor could ever fetch it and it was 558KB of dead weight in every deploy. The
+# music was turned back on (BGM_VOLUME is 0.11), so the exclusion is gone with it:
+# leaving it here would have shipped a 404 instead of a soundtrack.
+#
+# The video masters. 1.mp4 / 3.mp4 / 4.mp4 are the H.264 sources the shipped VP9
+# scenes were encoded from; nothing in the book ever requests them. They are also
+# untracked now (see .gitignore), so this line is a guard rather than the mechanism.
+FLIPBOOK/assets/*.mp4
+
+# OS / editor junk
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# VCS + CI
+.git/
+.gitignore
+.github/

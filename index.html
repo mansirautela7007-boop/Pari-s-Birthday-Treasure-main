@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pari's Birthday Treasure</title>
+<!--
+  ============================================================================
+  PARI'S BIRTHDAY TREASURE — the landing page for the whole thing.
+  ----------------------------------------------------------------------------
+  This folder holds two pieces:
+
+      FLIPBOOK/            the book itself — story videos, cover, posters,
+                           artwork, the 16 activities, sound and voice-over
+      MONEY CATCH MANIA/   the catch-the-money game, reached from page 28
+
+  THIS FOLDER is what a host must serve as its root. The book opens the game
+  with a path that climbs out of FLIPBOOK ("../MONEY%20CATCH%20MANIA/..."), so
+  serving FLIPBOOK on its own would put the game above the root and 404 it.
+
+  Everything real lives in FLIPBOOK, so this page only forwards there. It is a
+  <meta> refresh plus a script redirect plus a plain link: the script is instant,
+  the meta covers scripting being off, and the link covers both being blocked.
+  ============================================================================
+-->
+<meta http-equiv="refresh" content="0; url=FLIPBOOK/index.html">
+<link rel="canonical" href="FLIPBOOK/index.html">
+<style>
+  html, body {
+    height: 100%; margin: 0;
+    display: flex; align-items: center; justify-content: center;
+    /* the book's own wall colour, so the hand-off is not a white flash */
+    background: #93816e;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #2f2317;
+  }
+  a { color: #4e3a28; font-weight: 700; }
+</style>
+<script>location.replace("FLIPBOOK/index.html");</script>
+</head>
+<body>
+  <p>Opening <a href="FLIPBOOK/index.html">Pari's Birthday Treasure</a>…</p>
+</body>
+</html>

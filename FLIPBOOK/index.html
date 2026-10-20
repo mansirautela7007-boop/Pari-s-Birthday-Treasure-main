@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  PARI'S BIRTHDAY TREASURE  —  interactive 3D flipbook
+  ----------------------------------------------------------------------------
+  • No build step, no frameworks. Just open this file in any modern browser.
+  • A real 3D hardcover book: it has thickness, a spine, sits angled and casts a
+    soft shadow. Tap PLAY to open it (the cover swings on the spine), then flip.
+  • Full-bleed picture-book pages: 14 video scenes, each with a page number
+    printed in the bottom-right corner.
+  • Structure is split into THREE files:
+        index.html   → this markup
+        styles.css   → all styling + the night theme + animations
+        script.js    → the flip engine + the page content (EDIT PAGES THERE)
+  ============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Pari's Birthday Treasure</title>
+
+<!-- FAVICON — an inline SVG data URI: a moon-gold star on the cover's midnight
+     blue, matching the book. Inline on purpose. With no <link rel="icon"> at all
+     the browser requests /favicon.ico unprompted on EVERY load and the server
+     404s it (it was showing up as a console error on a clean page). A data URI
+     answers that request with zero extra network requests and no extra file. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230e1330'/%3E%3Cpath d='M16 5.5 L18.9 12.6 L26.5 13.2 L20.7 18.1 L22.5 25.5 L16 21.5 L9.5 25.5 L11.3 18.1 L5.5 13.2 L13.1 12.6 Z' fill='%23f6b81e'/%3E%3C/svg%3E" />
+
+<!-- ── Google Fonts: NONE. This document does not use a webfont. ───────────────
+     There WAS a request here for Fredoka 600/700, trimmed down over time to just
+     the faces that render text (page picker, rotate prompt, page numbers, "THE
+     END"). It was downloading on every load and rendering nothing: every one of
+     those rules asks for var(--font-head), and --font-head in styles.css is
+     "coiny", which is not Fredoka and is not loaded from anywhere. So the six
+     consumers have been falling through to system-ui, and the font, the two
+     preconnects and the gstatic fetches they warmed were pure cost.
+     Removing the request is a NO-OP visually, precisely because nothing rendered
+     in it. If Coiny (or Fredoka) is wanted, add the <link> AND make --font-head
+     name the family it loads — the two have to agree or this happens again.
+     The ACTIVITIES still load Baloo 2, and that one is real: they name it in
+     live font-family rules. Their <link>s live in their own documents, and the
+     preloader warms those URLs (ACTIVITY_FONT_CSS in script.js). -->
+
+<!-- All styling lives in styles.css -->
+<link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+<!-- Landscape lock: on phones/tablets (touch), the book shows only in landscape.
+     In portrait the scene is hidden and this rotate prompt is shown instead. -->
+<div class="rotate-notice" id="rotateNotice">
+  <div class="rotate-inner">
+    <div class="rotate-icon">🔄</div>
+    <div class="rotate-text">Please rotate your device<br />to landscape to read</div>
+  </div>
+</div>
+<div class="scene">
+  <div class="stage">
+    <!-- Fixed 1280×720 book layer. JS scales it (transform) to fit the screen. -->
+    <div class="flip-scale" id="flipScale">
+    <!-- INNER scale wrapper: the open motion runs here, so it composes with the
+         outer responsive scale of .flip-scale. -->
+    <div class="book-stage" id="bookStage">
+    <!-- Outer hardcover outline — visible once the book is open -->
+    <div class="book-frame"></div>
+    <div class="floor-shadow"></div>
+
+    <!-- The page-turning book mounts here (JS injects one .leaf per page).
+         Sits beneath the 3D cover layer; revealed once the cover swings open.
+         .page-stack = the tan fore-edge of the pages still to be turned (right). -->
+    <div id="flipbook">
+      <div class="page-stack" aria-hidden="true"><i></i><i></i><i></i></div>
+    </div>
+
+    <!-- Moving shadow the opening cover casts on the inside page. -->
+    <div class="cover-cast"></div>
+
+    <!-- The 3D hardcover + cover-opening animation (own perspective layer). -->
+    <div class="cover-scene" id="coverScene">
+    <div class="book-float" id="bookFloat">
+      <div class="book-pop" id="bookPop">
+        <div class="book" id="book">
+          <div class="book-inner" id="bookInner">
+
+            <!-- Open-book back cover backing -->
+            <div class="book-body"></div>
+
+            <!-- The 3D page block that gives the closed book its thickness -->
+            <div class="pageblock">
+              <div class="pbf pb-back"></div>
+              <div class="pbf pb-left"></div>
+              <div class="pbf pb-right"></div>
+              <div class="pbf pb-top"></div>
+              <div class="pbf pb-bottom"></div>
+              <div class="pbf pb-front"></div>
+            </div>
+
+            <!-- Front hardcover (last so it stacks in front when closed). -->
+            <div class="cover-holder">
+            <div class="cover" id="cover">
+              <div class="face front">
+                <div class="cover-img"></div>
+                <!-- Ornate GOLD cover frame (corner filigree + edge stars + double
+                     rule). One SVG in book-space (1280×720) so it scales crisply
+                     with the book — makes the closed cover read as a bound storybook. -->
+                <svg class="cover-frame" viewBox="0 0 1280 720" aria-hidden="true">
+                  <defs>
+                    <g id="cfStar">
+                      <path d="M0 -19 Q3.6 -3.6 19 0 Q3.6 3.6 0 19 Q-3.6 3.6 -19 0 Q-3.6 -3.6 0 -19 Z" fill="#f6df8c"/>
+                      <circle cx="0" cy="0" r="2.8" fill="#fff7dc"/>
+                    </g>
+                  </defs>
+                  <!-- Double gold rule framing the poster, CURVED to match the book.
+                       These two rx values are the only corners on the cover that CSS
+                       cannot reach: border-radius does nothing to SVG geometry, so when
+                       the book was rounded (see CURVED BOOK in styles.css) these stayed
+                       at their old rx="4"/rx="3" and were left as two crisp gold lines
+                       meeting at a hard right angle — the sharpest corner on the screen,
+                       sitting between a rounded board and a rounded poster plate.
+                       Keep them stepped just inside --r-board / just outside the plate's
+                       radius, so the three rings read as one nested set. -->
+                  <rect x="40" y="40" width="1200" height="640" rx="28" fill="none" stroke="#f4d67f" stroke-width="3.2"/>
+                  <rect x="49" y="49" width="1182" height="622" rx="25" fill="none" stroke="#e7b544" stroke-width="1.5" opacity="0.85"/>
+                  <!-- edge stars on the outer rule -->
+                  <use href="#cfStar" transform="translate(640,40)"/>
+                  <use href="#cfStar" transform="translate(640,680)"/>
+                  <use href="#cfStar" transform="translate(40,360)"/>
+                  <use href="#cfStar" transform="translate(1240,360)"/>
+                </svg>
+                <div class="back-fill"></div>
+                <div class="curl"></div>
+                <!-- LOADING BAR — takes the play button's place until every asset
+                     is on the device. script.js hides #hint on boot, drives this
+                     bar from real streamed bytes, then reveals the button with a
+                     pop-in. Sits in book-space (1280x720) so it scales with the
+                     cover. See the PRELOADER section in script.js. -->
+                <div class="loader" id="loader" role="progressbar"
+                     aria-label="Loading the story" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                  <div class="loader-track"><div class="loader-fill" id="loaderFill"></div></div>
+                  <div class="loader-text" id="loaderText">Gathering the treasure… 0%</div>
+                </div>
+                <!-- PLAY button — the artwork from assets/play-button.webp (the design
+                     supplied for this button), not a hand-drawn approximation. The image
+                     carries its own gold ring, gloss, sparkles and glow in an alpha
+                     channel, so the CSS below adds NO disc gradient and NO box-shadow: a
+                     circular shadow drawn at this square box edge would sit off the art.
+                     .play-face is filled by the PRELOADER (blob:, or the plain file if the
+                     fetch failed) exactly like the cover art — naming the file in CSS too
+                     would fetch it twice. The button is hidden until preload finishes, so
+                     the art is always in place before it is ever shown. -->
+                <button class="play-btn" id="hint" type="button" aria-label="Play — open the book">
+                  <span class="play-face" aria-hidden="true"></span>
+                </button>
+              </div>
+              <!-- BACK of the front cover: intentionally BLANK (plain dark board). -->
+              <div class="face back"></div>
+            </div>
+            </div><!-- /cover-holder -->
+
+          </div>
+        </div>
+      </div>
+    </div>
+    </div><!-- /cover-scene -->
+
+    <!-- Flat, top-most, transparent tap zone that only OPENS the book. -->
+    <div class="tap-catcher" id="tapCatcher"></div>
+
+    <!-- THE END — the book's BACK COVER. A real 3D leaf hinged on the LEFT: on the
+         last flip it swings SHUT toward the LEFT (like a page turn), lands closed,
+         then the whole closed book slides to the CENTRE. Two faces: a plain inside
+         (bc-inner) and the printed outside (bc-outer) with only "THE END" + a gold
+         Replay icon. Replay spins the whole book 360° back to the start cover. -->
+    <div class="back-cover-scene" id="backCoverScene">
+      <div class="back-cover" id="endOverlay" aria-hidden="true">
+        <div class="bc-face bc-inner"></div>
+        <div class="bc-face bc-outer">
+          <div class="end-title">THE&nbsp;END</div>
+          <button class="replay-icon-btn" id="replayBtn" type="button" aria-label="Replay from the beginning">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    </div><!-- /book-stage -->
+    </div><!-- /flip-scale -->
+  </div>
+
+  <!-- Progress read-out -->
+  <!-- (page counter removed — each page carries its own printed page number) -->
+</div>
+
+<!-- PAGE PICKER — parked OUTSIDE the book, top-left, so any page can be reached
+     directly. A native <select> on purpose: it gets a real spinner/picker on touch,
+     full keyboard support and screen-reader naming for free. JS fills the options
+     from the pages array (see script.js → PAGE PICKER). -->
+<div class="page-jump">
+  <select id="pageSelect" aria-label="Go to page"></select>
+</div>
+
+<!-- (The HOME button is gone — removed on request. It sat top-right and closed the
+     book back to the front cover. The way back to the cover is now the PAGE PICKER
+     top-left, whose "Cover" option calls resetToStart(); that route never went
+     through the button, so nothing else had to change. Removed outright rather
+     than left hidden — see the #prev / #next note in script.js for why this
+     codebase does not keep dead markup around for stale JS refs.) -->
+
+<!-- Flip arrows OUTSIDE the book, fixed at the viewport's bottom corners
+     (bottom-left = back, bottom-right = forward). -->
+<button class="corner-arrow back" id="cornerPrev" aria-label="Previous page">
+  <svg viewBox="0 0 48 48" aria-hidden="true">
+    <path d="M46 19 L30 5 L30 12 C20 11 11 15 6 30 L12 33 C18 24 22 24 30 24 L30 33 Z" fill="currentColor"/>
+  </svg>
+</button>
+<button class="corner-arrow fwd" id="cornerNext" aria-label="Next page">
+  <svg viewBox="0 0 48 48" aria-hidden="true">
+    <path d="M46 19 L30 5 L30 12 C20 11 11 15 6 30 L12 33 C18 24 22 24 30 24 L30 33 Z" fill="currentColor"/>
+  </svg>
+</button>
+
+<!-- INTERACTIVE PAGE OVERLAY — "Find the ₹10 features" (page 6).
+     A body-level iframe, NOT inside the book: .flip-scale carries a CSS
+     transform, which would trap position:fixed and make true fullscreen fail.
+     JS parks it exactly over the current page rectangle so the activity reads as
+     printed in the book, then expands it to fill the screen once the reader taps
+     Start. See the LBD OVERLAY section in script.js — the ids are the ones that
+     flip engine already listens for. -->
+<div class="lbd-stage" id="lbdStage" aria-hidden="true">
+  <iframe id="lbdFrame" src="about:blank" title="Find the ₹10 features — an activity"
+          allow="autoplay" scrolling="no"></iframe>
+  <!-- BOOT COVER — the activity's own poster, held over the frame until the embedded
+       document is actually up. Money Catch Mania loads a 2.9MB ES-module bundle, and a
+       module script is DEFERRED: nothing of the game exists until it has downloaded AND
+       executed. Measured at 1396ms even with the file already cached. The frame's own
+       poster background does not help, because the game's HTML paints its blue body
+       over it the moment it arrives — so what showed for that second and a half was a
+       blank blue rectangle with a stray button. This sits ABOVE the iframe instead.
+       See ensureLbdLoaded() / uncoverLbd() in script.js. -->
+  <div class="lbd-cover" id="lbdCover" aria-hidden="true">
+    <!-- GAME LOADING BAR — shown over the cover ONLY for the heavy activity
+         (Money Catch Mania), while its 2.9MB bundle compiles and Phaser boots.
+         Same gold-on-navy language as the books own boot bar so it reads as one
+         product. script.js drives it (see runGameLoader) and hides it the moment
+         the games canvas exists. Normally the game is already booted a page
+         early and this never appears; it is for the routes that skip the prewarm
+         — jumping straight here from the page picker, or arriving from another
+         activity, which leaves the shared frame busy. -->
+    <div class="lbd-loader" id="lbdLoader" role="progressbar" hidden
+         aria-label="Loading the game" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="lbd-loader-toy" aria-hidden="true">🪙</div>
+      <div class="loader-track"><div class="loader-fill" id="lbdLoaderFill"></div></div>
+      <div class="loader-text" id="lbdLoaderText">Filling the piggy bank… 0%</div>
+    </div>
+  </div>
+</div>
+
+<!-- Inlined one-shot SFX (base64 Ogg/Opus) for glitch-free Web Audio playback on file:// -->
+<script src="sfx-data.js"></script>
+<!-- Real on-disk byte sizes for every preloaded asset, generated from the files
+     themselves by tools/gen-manifest.js. The loading bar weights its progress by
+     these so the fill tracks actual bytes, not file count. -->
+<script src="asset-manifest.js"></script>
+<!-- All behaviour lives in script.js -->
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Money Catch Mania</title>
+
+    <!-- FAVICON — an inline SVG data URI: a gold coin on the game's sky blue,
+         the sibling of the book's star (see ../FLIPBOOK/index.html). Inline for
+         the same reason it is inline there: with no <link rel="icon"> at all the
+         browser requests /favicon.ico unprompted on every load and the server
+         404s it, which showed up as a console error on an otherwise clean page.
+         A data URI answers it with no extra request and no extra file. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%236cb8ec'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%23f6b81e' stroke='%23f4d67f' stroke-width='1.6'/%3E%3Ctext x='16' y='21.5' font-family='Segoe UI,sans-serif' font-size='13' font-weight='700' text-anchor='middle' fill='%23fff7dc'%3E%E2%82%B9%3C/text%3E%3C/svg%3E"
+    />
+    <!--
+      ========================================================================
+      MONEY CATCH MANIA  —  the interactive page after story page 27.
+      ------------------------------------------------------------------------
+      This is the BUILT game (Phaser, built by Vite) dropped into the flipbook.
+      It is the project's own generated index.html with one addition: the block
+      of integration script at the bottom, which speaks the book's activity
+      protocol (see the LBD OVERLAY section in ../../script.js):
+
+          → {source:"lbd", type:"lbd-start"}     asks the book to expand this
+                                                 iframe to FULL SCREEN
+          → {source:"lbd", type:"lbd-complete"}  shrinks it back into the page
+                                                 and turns to the next page
+
+      THERE IS ALSO ONE EDIT INSIDE THE BUILT BUNDLE, and it is the only one:
+      the Play button's pointerup handler in bundle/app-B_JuTLfC.js calls
+      window.__lbdPlay (defined at the bottom of this file) so that full screen
+      waits for Play. It has to live there because Play is a Phaser image on the
+      <canvas>, not a DOM node this document could bind to. Re-apply it after any
+      rebuild of the game — see the note by the hook.
+
+      WHY THE "Back to the story" BUTTON EXISTS, AND WHY IT IS NOT OPTIONAL:
+      while the overlay is full screen the book hides its own page arrows and
+      page picker (body.lbd-fullscreen in ../../styles.css). Full screen is
+      therefore a one-way door unless something in here posts "lbd-complete" —
+      without this button a child would be stuck in the game with no way back
+      to the book.
+
+      The game's CODE is unmodified — no behaviour in bundle/ or in the
+      Money-Catch-Mania-main source tree was touched. That means it does not
+      announce its own finale ("You Did It!"), so the book cannot auto-advance
+      when the last level is beaten the way the currency activities do; the
+      child leaves via the button whenever they have had enough. Teaching the
+      game to auto-advance means adding a postMessage to _showCompletionScreen()
+      in src/scenes/GameScene.js and re-running `npm run build` — a source-level
+      change so it survives the next build (postbuild.mjs regenerates bundle/,
+      which would silently discard any patch applied to the built file).
+
+      ALL art and audio are base64-inlined into bundle/app-*.js
+      (assetsInlineLimit in the game's vite.config.js), so this folder is
+      self-contained: no image or sound files are fetched at runtime.
+
+      THE TEN CURRENCY SPRITES ARE THE BOOK'S OWN ARTWORK. A child walks from
+      page 28 straight into this game, so the money has to be the same money in
+      both — and it was not: the game shipped its own coins, of which the 10 and
+      20 paise were different designs entirely. The ten inlined denominations are
+      now re-derived from ../FLIPBOOK/assets/Currency/ (trimmed, downscaled to
+      sprite size, WebP q92, alpha kept) by ../FLIPBOOK/tools/gen-game-sprites.js.
+      Re-run that after ANY change to those masters, then tools/gen-manifest.js —
+      and note that a fresh `npm run build` of the game would put its own art
+      back, so the script has to be run again on top of every rebuild.
+      ========================================================================
+    -->
+
+    <!-- Rounded kid-friendly font. Falls back gracefully to system fonts when offline.
+         'Nirmala UI' / 'Segoe UI' are kept in the stack because they carry the ₹ glyph. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        position: fixed; /* lock the page so mobile browsers don't scroll/bounce */
+        inset: 0;
+        background: #6cb8ec; /* sky-blue letterbox so any bars blend with the game */
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: none; /* stop the browser from hijacking drags as scroll/zoom */
+      }
+      /* Fill the ACTUAL visible viewport (more reliable than 100vw/100vh on mobile,
+         which mis-measure around the URL bar). Phaser's FIT scaler re-fits on resize. */
+      #game {
+        position: fixed;
+        inset: 0;
+      }
+      /* This is a landscape game. On phones/tablets held in portrait, ask the
+         player to rotate — otherwise it would squeeze into a tiny strip. */
+      #rotate {
+        display: none;
+      }
+      @media (orientation: portrait) and (pointer: coarse) {
+        #rotate {
+          display: flex;
+          position: fixed;
+          inset: 0;
+          z-index: 10000;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          gap: 3vh;
+          background: #6d28d9;
+          color: #fff;
+          font-family: 'Baloo 2', 'Segoe UI', sans-serif;
+          font-weight: 800;
+        }
+        #rotate .icon {
+          font-size: 20vw;
+        }
+        #rotate .txt {
+          font-size: 6vw;
+          padding: 0 8vw;
+          line-height: 1.4;
+        }
+        #game {
+          visibility: hidden;
+        }
+      }
+      * {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      /* ---- the way back to the book -------------------------------------
+         Sits ABOVE the Phaser canvas (which owns every other pointer event on
+         the page) and out of the play area, top-left, where the game draws
+         nothing. Styled to read as book chrome rather than part of the game. */
+      #backToStory {
+        position: fixed;
+        left: clamp(10px, 1.6vw, 22px);
+        top: clamp(10px, 1.6vw, 22px);
+        z-index: 9000;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 17px 9px 13px;
+        font-family: 'Baloo 2', 'Segoe UI', system-ui, sans-serif;
+        font-weight: 700;
+        font-size: clamp(12px, 1.15vw, 16px);
+        letter-spacing: 0.01em;
+        color: #f6df8c;
+        background: rgba(62, 45, 30, 0.86);
+        border: 1.5px solid rgba(246, 223, 140, 0.55);
+        border-radius: 999px;
+        cursor: pointer;
+        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
+        transition: background-color 160ms ease, border-color 160ms ease, transform 120ms ease;
+      }
+      #backToStory:hover {
+        background: rgba(84, 62, 41, 0.95);
+        border-color: rgba(246, 223, 140, 0.85);
+      }
+      #backToStory:active {
+        transform: scale(0.96);
+      }
+      #backToStory:focus-visible {
+        outline: 2px solid #f6b81e;
+        outline-offset: 2px;
+      }
+      #backToStory .arrow {
+        font-size: 1.15em;
+        line-height: 1;
+      }
+    </style>
+    <!-- CLASSIC SCRIPT, NOT A MODULE — this is what makes the game run from file://.
+         It shipped as <script type="module" crossorigin>. Module scripts are fetched
+         under CORS rules, and a page opened from disk has a NULL origin, so Chrome
+         refused the bundle outright:
+             "Access to script at 'file:///…/app-B_JuTLfC.js' from origin 'null' has
+              been blocked by CORS policy: Cross origin requests are only supported
+              for protocol schemes: chrome, …, http, https, …"
+         Phaser therefore never loaded, and the page painted only what lives in this
+         HTML: a blue body and the Back button. Over http:// it was fine, which is why
+         it only ever failed for someone double-clicking the folder.
+         The bundle needs nothing a module provides — it is a self-contained IIFE with
+         no import.meta, no export, and no dynamic import() anywhere in its 2.9MB — so
+         a classic script runs it verbatim. The rest of the book already loads this way,
+         which is why everything except the game worked from disk.
+         `defer` is REQUIRED, not cosmetic: this tag is in <head>, above <div id="game">,
+         and a module was implicitly deferred. Without defer a classic script executes
+         here and the game boots against an element that does not exist yet. -->
+    <script defer src="./bundle/app-B_JuTLfC.js"></script>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="rotate">
+      <div class="icon">🔄</div>
+      <div class="txt">Please rotate your device to landscape</div>
+    </div>
+
+    <button id="backToStory" type="button" aria-label="Back to the story">
+      <span class="arrow" aria-hidden="true">‹</span>Back to the story
+    </button>
+
+    <!-- ==================================================================
+         FLIPBOOK INTEGRATION — the only code added to the built game.
+         ================================================================== -->
+    <script>
+      (function () {
+        /* ---- PREWARMED? THEN STAY SILENT ------------------------------------
+           The book boots this game one page EARLY, into a hidden frame, so that
+           compiling the 2.9MB bundle (~1.2s of blocked main thread, measured) is
+           over before the child arrives instead of freezing the book on arrival.
+           Booting also starts Phasers audio, which would put game music under
+           the previous page — so while ?prewarm=1 is on the URL every AudioContext
+           is created suspended and resume() is a no-op, until the book says
+           {source:"book", type:"go-live"} at the moment the page is reached.
+           THIS RUNS BEFORE THE BUNDLE. The bundle is <script defer> in <head>, and
+           deferred scripts execute after the parser reaches the end of the body —
+           i.e. after this block — which is the only reason patching the constructor
+           here works at all. Do not move this below the bundle or reorder them. */
+        var live = !/(?:^|[?&])prewarm=1(?:&|$)/.test(location.search);
+        var made = [];            // every AudioContext this game creates
+        {
+          var Native = window.AudioContext || window.webkitAudioContext;
+          if (Native) {
+            var Hushed = function () {
+              var ctx = new Native();
+              made.push(ctx);
+              var realResume = ctx.resume.bind(ctx);
+              ctx.resume = function () {
+                if (live) return realResume();
+                try { ctx.suspend(); } catch (e) {}
+                return Promise.resolve();
+              };
+              // Suspend at birth ONLY when prewarming. On a normal load the game must
+              // behave exactly as it always did, or a context Phaser never explicitly
+              // resumes would leave the game silent.
+              if (!live) { try { ctx.suspend(); } catch (e) {} }
+              return ctx;
+            };
+            Hushed.prototype = Native.prototype;
+            window.AudioContext = Hushed;
+            if (window.webkitAudioContext) window.webkitAudioContext = Hushed;
+          }
+        }
+        /* ---- THE BOOK CAN SILENCE US ----------------------------------------
+           Phaser mixes through an AudioContext, which a background tab does NOT
+           stop on its own — so without this the game kept making noise after the
+           reader switched tab. The book sends "hush" on visibilitychange and
+           "unhush" on the way back (see pauseAllAudioFB in ../FLIPBOOK/script.js).
+           Tracked contexts, not a mute flag, because Phaser may create its context
+           at any point during boot and we have to catch whichever ones exist. */
+        window.addEventListener("message", function (e) {
+          var d = e && e.data;
+          if (!d || d.source !== "book") return;
+          if (d.type === "go-live" && !live) {
+            live = true;
+            for (var i = 0; i < made.length; i++) { try { made[i].resume(); } catch (err) {} }
+          } else if (d.type === "hush") {
+            for (var j = 0; j < made.length; j++) { try { made[j].suspend(); } catch (err) {} }
+            var m = document.querySelectorAll("audio,video");
+            for (var k = 0; k < m.length; k++) { try { m[k].pause(); } catch (err) {} }
+          } else if (d.type === "unhush" && live) {
+            for (var n = 0; n < made.length; n++) { try { made[n].resume(); } catch (err) {} }
+          }
+        });
+
+        function tell(type) {
+          try {
+            window.parent.postMessage({ source: 'lbd', type: type }, '*');
+          } catch (e) {}
+        }
+
+        /* Go FULL SCREEN when the child presses PLAY — not before.
+           This used to fire on DOMContentLoaded, so arriving on page 28 threw the
+           book straight into a full-screen rectangle that was still loading, with
+           the title screen appearing only afterwards. The game now sits in the page
+           like every other activity and takes over the screen only once it is
+           actually being played.
+
+           WHY A HOOK AND NOT A LISTENER HERE: the Play button is not a DOM element.
+           It is a Phaser image drawn inside the <canvas> (the Menu scene's "ui_play"),
+           so there is nothing in this document to bind a click to. The button's own
+           pointerup handler in bundle/app-B_JuTLfC.js calls window.__lbdPlay, and
+           that one line is the ONLY edit made to the built game:
+
+               S.on("pointerup",()=>{ …, window.__lbdPlay&&window.__lbdPlay(), this.startLevel(0) })
+
+           IF THE GAME IS EVER REBUILT that call has to be re-applied, or page 28
+           will simply never expand. Guard against a rebuild dropping it by checking
+           that pressing Play still fills the screen.
+
+           Once only: replaying a level must not re-send it. */
+        var started = false;
+        window.__lbdPlay = function () {
+          if (started) return;
+          started = true;
+          tell('lbd-start');
+        };
+
+        /* Leaving: shrink back into the page; the book then lights its forward arrow.
+           Guarded so a double-tap cannot fire two page turns. */
+        var leaving = false;
+        function leave() {
+          if (leaving) return;
+          leaving = true;
+          tell('lbd-complete');
+        }
+        document.getElementById('backToStory').addEventListener('click', leave);
+
+        /* Escape is the reflex for "get me out of full screen", so honour it.
+           The Phaser canvas takes pointer input but not keys, so this is safe. */
+        window.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape') leave();
+        });
+      })();
+    </script>
+  </body>
+</html>

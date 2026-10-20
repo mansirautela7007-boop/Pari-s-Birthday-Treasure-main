@@ -1,0 +1,1680 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Find the &#8377;50 Features</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230e1330'/%3E%3Cpath d='M16 5.5 L18.9 12.6 L26.5 13.2 L20.7 18.1 L22.5 25.5 L16 21.5 L9.5 25.5 L11.3 18.1 L5.5 13.2 L13.1 12.6 Z' fill='%23f6b81e'/%3E%3C/svg%3E">
+<!--
+  ============================================================================
+  FIND THE ₹50 FEATURES
+  ----------------------------------------------------------------------------
+  • A sibling of find-the-10-features.html — same game, same layout, same code.
+    Only four things differ per note: the artwork, the note's aspect ratio, the
+    FEATURE_ZONES table, and the lines the speech box says.
+  • Loaded by the flipbook into #lbdFrame (see index.html / script.js). It plays
+    ENTIRELY INSIDE THE PAGE — it never asks the book for fullscreen. The one
+    message it sends back is:
+        {source:"lbd", type:"lbd-complete"}  → the book lights its forward arrow (the reader turns the page)
+  • Deliberately bare: background, a speech box, the note, and the glass. No
+    header, score, pips, side panel or buttons — the speech box is the only voice,
+    and it does the teaching as each feature is found.
+  • The glass is a PAGE-level object: it parks off the note (bottom right) and is
+    dragged anywhere. It only magnifies while it is actually over the note.
+  • It is HIDDEN for the opening line and arrives with the question. Nothing responds
+    until it arrives. No hand nudge here: the gesture is taught once, on the ₹10 note
+    (see SHOW_DRAG_NUDGE below).
+  • Nothing on the note is marked in advance. When the reader drags the glass onto
+    a feature it sparkles, and a GOLD RING is left on that spot as the record of
+    the find — so the note fills up with their discoveries.
+  • Designed at a fixed 1280×720 and scaled to fit (same trick as .flip-scale in
+    the book), so it can never reflow or break.
+  • Art comes from ../assets/Currency/ — no base64, so it stays small.
+  ============================================================================
+-->
+<style>
+/* Google Fonts — trimmed. Nunito was requested on every activity load and
+   rendered NOTHING: body names it, but every element that actually holds text
+   (.dlgText, .scoreVal, .opt labels) sets Baloo 2. Baloo 2 is cut to the
+   weights this file really uses. Keep this URL byte-identical to the one the
+   parent preloader warms (ACTIVITY_FONT_CSS in script.js). */
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&display=swap');
+
+/* ---- the found-ring palette ----
+   Kept as variables because ONE note needs a different one: see --ring-line below.
+   The rest of the ring geometry is identical everywhere. */
+:root{
+  --ring-line:#f4d67f;      /* the ring itself */
+  --ring-fill:rgba(255,214,110,.20);      /* the wash inside it */
+  --ring-bloom:rgba(255,214,110,.45);    /* soft inner glow */
+  --ring-glow:rgba(255,196,56,.40);      /* outer glow */
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow:hidden}
+body{
+  --ink:#2b1a10;
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  color:var(--ink);
+  /* Same picture behind the 1280×720 stage, so if the box we're given isn't
+     exactly 16:9 the letterbox edges blend instead of showing a flat slab. */
+  background:#2a1c33 url(../assets/Currency/background.webp) center/cover no-repeat;
+  -webkit-tap-highlight-color:transparent;
+  overscroll-behavior:none;
+  user-select:none; -webkit-user-select:none;
+}
+
+/* ---- fixed 1280×720 stage, scaled by JS to fill whatever box we're in ---- */
+#fit{
+  position:absolute; left:0; top:0; width:1280px; height:720px;
+  transform-origin:0 0; will-change:transform;
+}
+.scene{
+  position:absolute; inset:0; overflow:hidden;
+  background:#2a1c33 url(../assets/Currency/background.webp) center/cover no-repeat;
+}
+
+/* ==========================================================================
+   SPEECH BOX  —  the only voice on the page. Frame art carries the portrait and
+   the bunting; the text sits in the clear part of the pill.
+   ========================================================================== */
+.dialogue{
+  /* 897x110 keeps the art's own 8.1527 aspect (1655x203), so the <img> filling
+     this box cannot squash it.
+       The artwork was REPLACED with a longer, flatter pill: the old file was
+     1080x178 (6.0674) and this box was 667x110 to suit it. HEIGHT is held at 110
+     and the WIDTH grew to 897, rather than the other way round, because the new
+     aspect at 667 wide forces the height down to 82px — and 82px leaves a pill
+     interior of only 43px, which will not hold the two lines of 21px text
+     (49.6px) this box has to take. At 110 tall the interior is 57.4px and the
+     pair fits with room over.
+       Right edge lands at 60+897 = 957px. That stays clear of the score badge on
+     the find-the-* pages, whose left edge sits near 1090px. */
+  position:absolute; left:60px; top:32px; width:897px; height:110px;
+  z-index:30; pointer-events:none;            /* never blocks a drag */
+}
+.dialogue>img{position:absolute; inset:0; width:100%; height:100%; display:block}
+/* Sits in the clear part of the pill. RE-MEASURED off the replacement
+   dialogue-box.webp (1655x203), because every one of these numbers came off the
+   old 1080x178 art:
+       portrait circle ends       6.89%
+       pill's left stroke clears  9.12%
+       bunting begins            89.55%
+       pill INTERIOR             24.63%..76.85% of the height, centre 50.74%
+   The centre is 50.74% and not 50% because the portrait hangs below the pill and
+   drags the whole art's centre down. (The old file measured 8.9% / 89.4% / 51.7%
+   — near enough to look the same, but the aspect moved far more than the
+   landmarks did, which is what forced the box resize above.)
+     left/width span 11%..87.5%, leaving ~17px of air inside the pill either side
+   at the 897px box width. The type is 21px, down from 23px, from when the note
+   lines went from "₹500" to "five-hundred-rupee" and the longest question grew to
+   55 characters. On the wider pill that line now fits on ONE line — 23px would
+   fit too, so this is headroom rather than a necessity. */
+.dlgText{
+  position:absolute; left:11%; width:76.5%; top:50.74%; transform:translateY(-50%);
+  font-family:'Baloo 2','Trebuchet MS',system-ui,sans-serif; font-weight:800;
+  font-size:26px; line-height:1.18; color:var(--ink);
+  text-align:left;
+}
+/* a small pop each time the line changes, so a new discovery is felt */
+.dlgText.pop{animation:dlgPop .5s cubic-bezier(.2,1.5,.35,1) both}
+@keyframes dlgPop{0%{scale:.9; opacity:.4}60%{scale:1.04}100%{scale:1; opacity:1}}
+
+/* ==========================================================================
+   SCORE COUNTER  —  top right, mirroring the speech box. Colours are sampled
+   from dialogue-box.webp (stroke #E2741D on white) so the two read as a set.
+   ========================================================================== */
+.score{
+  position:absolute; right:60px; top:54px; height:66px;
+  display:flex; align-items:center; gap:13px; padding:0 24px;
+  background:#fff; border:4px solid #E2741D; border-radius:999px;
+  box-shadow:0 8px 20px -8px rgba(30,14,4,.55);
+  z-index:30; pointer-events:none;            /* never blocks a drag */
+}
+.scoreVal{
+  font-family:'Baloo 2','Trebuchet MS',system-ui,sans-serif; line-height:1;
+  color:var(--ink); white-space:nowrap;
+}
+.scoreVal b{font-weight:800; font-size:31px}
+.scoreVal i{font-weight:600; font-size:21px; font-style:normal; color:#9a7b62}
+/* a small kick each time it goes up */
+.score.bump{animation:scoreBump .5s cubic-bezier(.2,1.6,.35,1) both}
+@keyframes scoreBump{
+  0%{scale:1}
+  40%{scale:1.13; box-shadow:0 8px 20px -8px rgba(30,14,4,.55), 0 0 0 8px rgba(255,196,56,.35)}
+  100%{scale:1}
+}
+
+/* ==========================================================================
+   THE NOTE
+   ========================================================================== */
+.note{
+  /* CENTRED ON THE PAGE, both axes. This was left:200px; top:NNNpx, which put the
+     note 30px left of the stage's centre line and 11.5px above it — a visibly wider
+     margin down the right-hand side than the left.
+     Auto margins, NOT translate(-50%,-50%): the magnifier maps FEATURE_ZONES, the
+     gold rings and the zoom layer through noteEl.offsetLeft/offsetTop, and offsetLeft
+     reports the box BEFORE any transform — a translated note would look centred and
+     put every feature half a note away from where the child is told to look. */
+  position:absolute; inset:0; margin:auto; width:820px; aspect-ratio:2.22492;
+  z-index:5;
+}
+.note>img{
+  display:block; width:100%; height:100%; border-radius:3px;
+  filter:drop-shadow(0 16px 26px rgba(30,14,4,.55));
+}
+
+/* ---- gold ring left behind on every feature the reader found ----
+   Drawn with box-shadow rather than a border: the circle is squared off using the
+   width/padding-bottom trick, and a border would add to the box and stop it being
+   perfectly round. This one is NOT cleaned up — it is the record of the find. */
+.foundMark{
+  position:absolute; transform:translate(-50%,-50%);
+  height:0; border-radius:50%; pointer-events:none;
+  background:radial-gradient(circle,var(--ring-fill) 55%,transparent 100%);
+  box-shadow:inset 0 0 0 3px var(--ring-line),        /* the ring itself */
+             inset 0 0 16px var(--ring-bloom),        /* soft inner bloom */
+             0 0 16px 3px var(--ring-glow);           /* outer glow */
+  animation:markIn .55s cubic-bezier(.2,1.5,.35,1) both;
+}
+@keyframes markIn{
+  0%{opacity:0; transform:translate(-50%,-50%) scale(.35)}
+  60%{opacity:1; transform:translate(-50%,-50%) scale(1.14)}
+  100%{opacity:1; transform:translate(-50%,-50%) scale(1)}
+}
+
+/* ---- discovery flash (clears itself, leaving only the gold ring) ---- */
+.flashGlow{
+  position:absolute; transform:translate(-50%,-50%); height:0; border-radius:50%;
+  pointer-events:none;
+  background:radial-gradient(circle,rgba(255,224,130,.75) 0%,rgba(255,196,56,.34) 55%,rgba(255,196,56,0) 74%);
+  box-shadow:inset 0 0 0 2px rgba(255,188,56,.6);
+  animation:flash 2s cubic-bezier(.2,.8,.3,1) forwards;
+}
+@keyframes flash{
+  0%{opacity:0; transform:translate(-50%,-50%) scale(.55)}
+  14%{opacity:1; transform:translate(-50%,-50%) scale(1.12)}
+  30%{transform:translate(-50%,-50%) scale(.98)}
+  55%{opacity:.85; transform:translate(-50%,-50%) scale(1.05)}
+  100%{opacity:0; transform:translate(-50%,-50%) scale(1.3)}
+}
+.burst{position:absolute; width:0; height:0; pointer-events:none}
+.burst i{
+  position:absolute; left:0; top:0; width:3px; height:17px; margin:-8px -1.5px;
+  background:linear-gradient(#FFF2C4,rgba(255,255,255,0)); border-radius:2px;
+  animation:shoot .85s cubic-bezier(.2,.7,.3,1) forwards;
+}
+@keyframes shoot{
+  0%{opacity:0; scale:.4; translate:0 0}
+  22%{opacity:1}
+  100%{opacity:0; scale:1; translate:0 -52px}
+}
+.popper{position:absolute; width:0; height:0; pointer-events:none}
+.popper i{position:absolute; left:0; top:0; display:block; animation:pop 1.1s cubic-bezier(.15,.75,.25,1) forwards}
+@keyframes pop{
+  0%{opacity:0; translate:0 0; rotate:0deg}
+  12%{opacity:1}
+  60%{opacity:1; translate:var(--dx) var(--dy); rotate:220deg}
+  100%{opacity:0; translate:calc(var(--dx) * 1.15) calc(var(--dy) + 46px); rotate:420deg}
+}
+
+/* ==========================================================================
+   MAGNIFYING GLASS  —  a page-level object, not a child of the note
+   ========================================================================== */
+.lens{
+  position:absolute; left:0; top:0; z-index:12; pointer-events:none;
+  will-change:transform;
+  transition:transform .07s cubic-bezier(.2,.9,.25,1), filter .18s;
+}
+/* The magnifier artwork. Its own lens is painted as a MILKY disc, and because
+   this <img> is the last child it paints ON TOP of .zoom — so that milk was
+   veiling the very note the glass exists to show. The mask below punches the
+   lens area out of the artwork, leaving the rim, the handle and only a 10%
+   ghost of the original gloss: washed, clear glass. The ellipse is a true
+   circle in pixels — 30.39% of the width and 30.39% x LENS_RATIO of the height
+   are the same distance — and its centre matches LENS_CX / LENS_CY, so these
+   four numbers must be changed together with the LENS_* constants below if the
+   artwork is ever replaced. */
+.lens img{
+  position:absolute; inset:0; width:100%; height:100%; display:block;
+  -webkit-mask-image:radial-gradient(ellipse 30.39% 31.71% at 35.27% 36.83%,
+                     rgba(0,0,0,.10) 0 95%, #000 100%);
+          mask-image:radial-gradient(ellipse 30.39% 31.71% at 35.27% 36.83%,
+                     rgba(0,0,0,.10) 0 95%, #000 100%);
+}
+/* The magnified note. Faded out whenever the glass is off the note, so the glass
+   simply reads as clear glass over the room behind it. */
+.zoom{
+  position:absolute; border-radius:50%; background-color:#FDF7E6; background-repeat:no-repeat;
+  box-shadow:inset 0 0 0 1px rgba(61,36,21,.10);
+  opacity:0; transition:opacity .16s ease;
+}
+.zoom.on{opacity:1}
+.rimShadow{position:absolute; border-radius:50%; box-shadow:0 14px 26px -10px rgba(30,14,4,.7)}
+/* halo shown while the magnet has hold of a feature */
+.magnetRing{
+  position:absolute; border-radius:50%; opacity:0; transition:opacity .16s;
+  box-shadow:0 0 0 3px rgba(255,190,60,.75), 0 0 26px 8px rgba(255,190,60,.45);
+}
+.lens.snapped .magnetRing{opacity:1; animation:ringPulse 1.1s ease-in-out infinite}
+@keyframes ringPulse{
+  0%,100%{box-shadow:0 0 0 3px rgba(255,190,60,.7), 0 0 22px 6px rgba(255,190,60,.36)}
+  50%{box-shadow:0 0 0 5px rgba(255,205,90,.9), 0 0 34px 12px rgba(255,190,60,.55)}
+}
+/* EVERY SHAPE CHANGE GOES HERE, NOT ON .lens.
+   .lens is positioned by transform:translate3d(), and CSS applies scale/rotate
+   BEFORE transform — so a scale on .lens multiplies its POSITION and slides the
+   glass toward the stage origin. This wrapper has the same box (inset:0) and no
+   positional transform of its own, so scaling it scales only the artwork. */
+.lensPop{position:absolute; inset:0}
+.lens.snapped .lensPop{scale:1.045}
+/* ---- THE HOLD  —  a gold arc closing round the rim over DWELL_MS ----
+   Painted with ::after on the halo element that already exists, so the hold costs no
+   extra layer. --fill is written from the rAF tick in JS (0deg → 360deg).
+   This is not decoration: without a visible countdown, "keep still for two seconds"
+   is indistinguishable from "nothing is happening", and a child would move the glass
+   away before it ever completed. */
+.magnetRing::after{
+  content:""; position:absolute; inset:-7px; border-radius:50%;
+  opacity:0; transition:opacity .14s;
+  background:conic-gradient(from -90deg,
+    rgba(255,214,110,.98) var(--fill,0deg), rgba(255,214,110,0) 0);
+  -webkit-mask:radial-gradient(circle closest-side, transparent 86%, #000 88%);
+          mask:radial-gradient(circle closest-side, transparent 86%, #000 88%);
+}
+/* .holding beats .snapped deliberately: the steady arc IS the feedback, and
+   ringPulse animates the same property on the same element, so the two would fight. */
+.lens.holding .magnetRing{opacity:1; animation:none}
+.lens.holding .magnetRing::after{opacity:1}
+.lens.grabbed{filter:drop-shadow(0 10px 12px rgba(30,14,4,.4))}
+.lens.idle{animation:bob 2.4s ease-in-out infinite}
+/* While the guide is walking the glass to a feature, nothing else may drive its
+   transform — the travel is written frame by frame from JS. */
+.lens.guiding{animation:none}
+@keyframes bob{0%,100%{margin-top:0}50%{margin-top:-8px}}
+.lens.gone{display:none}
+
+/* ==========================================================================
+   THE GLASS IS HELD BACK UNTIL THE QUESTION IS ASKED
+   --------------------------------------------------------------------------
+   Screen 1 is "This is a ₹10 note." — a statement, with nothing to do. The glass
+   used to sit there through it, bobbing, inviting a child to start hunting before
+   they had been asked anything. It is hidden for that line and arrives with the
+   question ("Can you find ₹10 on this note?"), so the tool shows up exactly when
+   there is a job for it.
+   visibility, NOT display: layout() measures this element to size the glass and the
+   zoom circle, and display:none would collapse those measurements to zero. */
+.lens.waiting{visibility:hidden; opacity:0}
+/* …and it ARRIVES rather than blinking into existence: a quick overshoot, so the eye
+   is pulled to it at the same moment the question is spoken. */
+.lens.arrive .lensPop{animation:lensIn .62s cubic-bezier(.22,1.4,.36,1) both}
+/* .arrive is never taken off the element, and while it sat on .lens it was also
+   overriding .lens.idle's bob — so the glass has never bobbed in shipped builds.
+   Moving the entrance to .lensPop would silently switch that bob back on. Held off
+   deliberately: the request is for the glass to pop in and STAY PUT. Delete this
+   line to let the idle bob run. */
+.lens.arrive{animation:none}
+/* A SMALL POP-IN, AT THE BOTTOM RIGHT — and it goes nowhere.
+   The glass PARKS at the bottom right of the page (PARK_X/PARK_Y), so it does not
+   need carrying there: it simply pops into being where it belongs. An earlier
+   version slid it in from off the corner, and measured on screen that was a
+   212x248px journey before it settled — a lot of travel to introduce a tool that
+   was already in the right place.
+   Only scale, rotate and opacity are touched here. All three are centred, so the
+   glass's CENTRE does not move by a single pixel during the entrance; there is no
+   translate to interpolate and nothing for the eye to follow across the page.
+   (Keep it that way: render() owns .lens's transform and rewrites it every frame,
+   so any positional animation here fights the thing that positions the glass.) */
+@keyframes lensIn{
+  0%  {opacity:0; scale:.62; rotate:-8deg}
+  55% {opacity:1; scale:1.08; rotate:3deg}
+  100%{opacity:1; scale:1;    rotate:0deg}
+}
+
+/* ---- DRAG NUDGE  —  a hand that grabs the glass and pulls it onto the note ----
+   A 👆 styled the way the book's own page-turn hint is (.flip-hint in ../styles.css):
+   an emoji, so this costs no new image and matches the cue the reader has already
+   been taught to read as "your turn".
+   One loop is the whole gesture: appear over the glass, press down, travel to the
+   note, fade. --hx / --hy come from JS because the travel is a real vector from the
+   park spot to the note, and both ends move with the layout. */
+.dragHint{
+  position:absolute; left:0; top:0; z-index:15; pointer-events:none;
+  font-size:54px; line-height:1; opacity:0;
+  filter:drop-shadow(0 3px 6px rgba(30,14,4,.55));
+  will-change:transform,opacity;
+}
+.dragHint.run{animation:dragNudge 3.2s cubic-bezier(.38,0,.36,1) infinite}
+/* THE GLASS TRAVELS WITH THE HAND.
+   Without this the hand slid onto the note on its own while the magnifier stayed
+   parked in the corner — which mimes "TAP the note", the exact opposite of the
+   gesture being taught. The glass has to go with it or the nudge teaches the wrong
+   thing.
+   It is animated on a WRAPPER, not on .lens itself, because render() writes
+   .lens's transform on every move and a CSS animation on the same property would
+   override that inline value and fling the glass to the stage origin. The wrapper's
+   translate simply composes with the lens's own, so no JS state is touched: pos/raw
+   never change, and dropping the class puts the glass back exactly where it was.
+   Timing is deliberately identical to dragNudge so the two move in lockstep. */
+.lensNudge{position:absolute; inset:0; pointer-events:none; z-index:12}
+.lensNudge.run{animation:nudgeDrag 3.2s cubic-bezier(.38,0,.36,1) infinite}
+@keyframes nudgeDrag{
+  0%,26%  {transform:translate(0,0)}
+  66%,88% {transform:translate(var(--hx),var(--hy))}
+  100%    {transform:translate(0,0)}
+}
+@keyframes dragNudge{
+  0%   {opacity:0; transform:translate(0,0)                 scale(1.18)}
+  9%   {opacity:1; transform:translate(0,0)                 scale(1)}
+  18%  {opacity:1; transform:translate(0,0)                 scale(.86)}   /* press  */
+  26%  {opacity:1; transform:translate(0,0)                 scale(.9)}
+  66%  {opacity:1; transform:translate(var(--hx),var(--hy)) scale(.9)}    /* drag   */
+  78%  {opacity:1; transform:translate(var(--hx),var(--hy)) scale(.94)}
+  90%  {opacity:0; transform:translate(var(--hx),var(--hy)) scale(1)}
+  100% {opacity:0; transform:translate(0,0)                 scale(1.18)}
+}
+@media (prefers-reduced-motion:reduce){
+  /* The hand still has to TEACH the gesture with motion off, so it is not simply
+     hidden: it holds at the NOTE end of the travel, which is the half that says
+     "drag it there". Only the repeating movement goes. */
+  .dragHint.run{animation:none; opacity:1;
+                transform:translate(var(--hx),var(--hy)) scale(.92)}
+  /* The glass stays parked with motion off — the held hand carries the message. */
+  .lensNudge.run{animation:none; transform:none}
+  .lens.arrive{animation:none}
+}
+
+/* Full-stage drag surface: the glass can be picked up anywhere on the page. */
+.drag{
+  position:absolute; inset:0; z-index:20;
+  touch-action:none;                          /* no page scrolling while dragging */
+  cursor:grab; outline:none; background:transparent;
+}
+.drag.dragging{cursor:grabbing}
+.drag.finished{cursor:default}
+
+.confetti{position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:40}
+.confetti i{position:absolute; top:-26px; display:block; animation:fall linear forwards}
+@keyframes fall{
+  0%{opacity:1; translate:0 0; rotate:0deg}
+  100%{opacity:.9; translate:var(--drift) 800px; rotate:540deg}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation:none !important; transition:none !important}
+  .flashGlow{opacity:.9}
+}
+</style>
+</head>
+<body>
+
+<div id="fit">
+ <div class="scene">
+
+  <div class="dialogue">
+    <img src="../assets/Currency/dialogue-box.webp" alt="" draggable="false">
+    <span class="dlgText" id="dlgText">This is a ₹50 note.</span>
+  </div>
+
+  <div class="score" id="score" aria-live="polite" aria-label="Features found">
+    <span class="scoreVal"><b id="scoreNum">0</b><i id="scoreOf">/2</i></span>
+  </div>
+
+  <div class="note" id="note">
+    <img id="noteImg" src="../assets/Currency/note-50.webp"
+         alt="A ₹50 note of the Reserve Bank of India" draggable="false">
+  </div>
+
+  <div class="dragHint" id="dragHint" aria-hidden="true">👆</div>
+
+  <div class="lensNudge" id="lensNudge">
+  <div class="lens waiting" id="lens">
+   <!-- .lensPop carries every SHAPE change (the pop-in, the magnet nudge, the lift
+        away). It exists because .lens itself is positioned by a transform, and a
+        scale on .lens would scale that position too — see .lensPop in the CSS. -->
+   <div class="lensPop">
+    <div class="rimShadow" id="rimShadow"></div>
+    <div class="zoom" id="zoom"></div>
+    <div class="magnetRing" id="magnetRing"></div>
+    <img src="../assets/Currency/magnifying-glass.webp" alt="" draggable="false">
+   </div>
+  </div>
+  </div>
+
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
+
+  <div class="drag" id="drag" tabindex="0" role="application"
+       aria-label="Tap the ₹50 note, or drag the magnifying glass over it with your finger or the arrow keys, to find hidden features."></div>
+
+ </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ========================================================================
+     TALKING TO THE BOOK
+     If this page is ever opened on its own, `parent === window` and the post is
+     a harmless no-op, so it still works standalone.
+     ====================================================================== */
+  function tell(type) {
+    try { window.parent.postMessage({ source: "lbd", type: type }, "*"); } catch (e) {}
+  }
+
+  /* ========================================================================
+     FIT  —  the design is a fixed 1280×720; scale it to fill whatever box the
+     book gives us. Never reflows.
+     ====================================================================== */
+  var BASE_W = 1280, BASE_H = 720;
+  var fitEl = document.getElementById("fit");
+  function fit() {
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var s = Math.min(vw / BASE_W, vh / BASE_H);
+    fitEl.style.transform = "translate(" + ((vw - BASE_W * s) / 2) + "px," +
+                                           ((vh - BASE_H * s) / 2) + "px) scale(" + s + ")";
+  }
+  window.addEventListener("resize", fit);
+  window.addEventListener("orientationchange", fit);
+  // The book sets this frame's src and THEN resizes it to the page rectangle, so a
+  // plain resize listener can miss the change that matters and leave us scaled to
+  // a stale box (letterboxed inside the page). Watching the root element catches
+  // every size change whatever the order, so we always fill the box we're given.
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () { fit(); layout(); }).observe(document.documentElement);
+  }
+  fit();
+
+  /* ========================================================================
+     TUNING
+     ====================================================================== */
+
+  /* Magnification inside the glass, and how wide the clear glass is. These two
+     are ONE setting with two halves: what the reader sees through the lens is a
+     circle of the note GLASS_FRAC / ZOOM wide (as a fraction of the note's
+     width), and the whole point of the activity is that a target lands inside
+     that circle rather than spilling over the rim.
+       The widest target is the big bottom-right numeral: on the ₹500 and ₹200
+     artwork it is about 16.4% of the note wide, so it needs a circle of radius
+     ~8.4% to sit inside. At rest 0.115 / 1.25 = 9.2% and during the close-up
+     0.115 / 1.35 = 8.5% — the numeral fits, snugly, at the peak of the reveal.
+       This is why the magnification is low. The glass cannot sensibly grow past
+     a third of the note's width (the artwork would out-tall the note itself),
+     and a numeral that is a sixth of the note wide simply cannot be blown up
+     much and still fit. Raising ZOOM back towards 2.5 crops the numeral again,
+     which is the thing this is tuned to avoid. */
+  var ZOOM = 1.25;         // resting magnification
+
+  /* THE CLOSE-UP played when a feature is claimed: the glass parks dead centre
+     on the feature and the magnification eases up, holds, then eases back to
+     exactly ZOOM. REVEAL_ZOOM is deliberately only a little above ZOOM — it is
+     the moment the reader is meant to READ the numeral, so it is the one frame
+     that must not crop it.
+     REVEAL_IN and REVEAL_OUT are the two eases; the hold is whatever is left of
+     REVEAL_MS (2000 − 260 − 360 = 1380ms). */
+  var REVEAL_ZOOM = 1.35;
+  var REVEAL_MS   = 2000;
+  var REVEAL_IN   = 260;
+  var REVEAL_OUT  = 360;
+  var TARGET = 2;         // how many features finish the activity
+  var GLASS_FRAC = 0.115; // clear glass radius, as a fraction of the note's width
+
+  /* Where the glass sits inside the magnifier artwork. Only change these if
+     assets/Currency/magnifying-glass.webp itself is replaced. */
+  var LENS_CX = 0.3527; // glass centre, fraction of magnifier width
+  var LENS_CY = 0.3683; // glass centre, fraction of magnifier height
+  var LENS_R  = 0.3039; // clear glass radius, fraction of magnifier width
+  var LENS_RATIO = 1.0436; // magnifier image width / height (431 / 413)
+
+  /* Where the glass rests before it is picked up — off the note, bottom right. */
+  var PARK_X = 1062, PARK_Y = 526;   // glass CENTRE, in 1280×720 stage pixels
+  /* PARK_Y was 540 when the glass was smaller. The wider GLASS_FRAC makes the
+     magnifier artwork ~297px tall, and at 540 the handle tip fell past y=720 and
+     was clipped by .scene overflow:hidden. */
+
+  /* Magnetic pull, in two stages.
+       MAGNET_BITE — the pull begins as soon as a sliver of a feature enters the
+                     glass: reach = feature radius + glass radius × MAGNET_BITE.
+       MAGNET_TUG  — strength of that first gentle tug at long range.
+       LOCK_FROM / LOCK_TO — how close (0 at the rim of reach, 1 dead centre) the
+                     glass must get before the pull tightens into a full lock.
+     Raise MAGNET_TUG for a stronger drift; lower LOCK_FROM to make features
+     easier for younger children to land on.
+
+     MAGNET_BITE WAS 0.85 AND HAD TO COME DOWN WITH THE CATCH RADIUS. Discovery is
+     tested against the MAGNETISED position, so a long reach quietly undoes a smaller
+     catch: the pull drags a near-miss to dead centre, distance becomes zero, and any
+     catch radius at all then counts it. Shrinking CATCH_SCALE on its own would have
+     changed almost nothing — measured, the effective catch barely moved. The two
+     numbers are one setting. */
+  var MAGNET_BITE = 0.45;
+  var MAGNET_TUG  = 0.18;
+  var LOCK_FROM   = 0.5;
+  var LOCK_TO     = 0.85;
+
+  /* HOW SMALL THE CATCH IS, AND HOW LONG YOU MUST HOLD IT.
+     ------------------------------------------------------------------------
+     CATCH_SCALE shrinks every zone's catch circle without touching the measured
+     FEATURE_ZONES geometry below — the r values stay the size of the printed feature
+     (the gold ring still uses them, so it still frames what was found), and only the
+     area that COUNTS is reduced. One number, so all six notes stay consistent.
+     DWELL_MS is how long the glass must rest on a feature before it is claimed.
+     Landing on one is no longer enough: sweeping the glass across the note now claims
+     nothing at all, which is what makes each find deliberate. */
+  var CATCH_SCALE = 0.6;
+  var DWELL_MS    = 1000;
+
+  /* ========================================================================
+     DETECTION ZONES — ADJUST FEATURE POSITION AND SIZE HERE
+     ------------------------------------------------------------------------
+     Every value is a percentage of the banknote image, so the zones stay lined
+     up at any screen size.
+         x = horizontal centre, % from the note's left edge
+         y = vertical centre,   % from the note's top edge
+         r = catch radius,      % of the note's WIDTH (larger = easier to find)
+         say = what the speech box says when this one is found
+     The glass is magnetically pulled to x / y, and the feature is counted once
+     the glass centre lands inside r — at which point a gold ring of radius r is
+     left on the note. Nothing is ever drawn for a zone that has not been found.
+     ====================================================================== */
+  /* Keep each line SHORT — the pill holds about 25 characters per line, and two
+     lines at most. Longer lines run into the bunting at the end of the frame. */
+  /* Measured off the artwork itself, not estimated: each circle was drawn over
+     note-50.webp and checked against the feature before being written here. */
+  var FEATURE_ZONES = [
+    { id:"pattern",    x:20.5, y:54, r:8.3 },
+    { id:"sideways",   x:28.7, y:62.4, r:6.1 },
+    { id:"corner",     x:14.8, y:88.4, r:7.7 },
+    { id:"big",        x:77.7, y:72.9, r:10.4 }
+  ];
+
+
+  /* ========================================================================
+     WHAT THE SPEECH BOX SAYS, IN ORDER
+     ------------------------------------------------------------------------
+     The whole script is a fixed FIVE-STEP sequence:
+
+       1. OPENING_LINE   "This is a ₹50 note"
+       2. NUDGE_LINE     "Can you find ₹50 on this note?"
+       3. FIND_LINES[0]  "Good job!"   ← on a find
+       4. DONE_LINE      "Perfect! This is how we write ₹50"
+            ← ONCE, once BOTH correct areas have been magnified
+
+     "Perfect! This is how we write ₹50" is the PAYOFF line, so it is held
+     back until both features have been found and their close-ups have run — it
+     used to fire on the very first find, before the child had done the thing it
+     was congratulating. It is spoken exactly once. The separate bare reading
+     ("This is how we write ₹50." / note-50-write.ogg) is gone with it: two
+     near-identical takes of one sentence in one activity was a repeat, not a
+     recap. That clip has been deleted as dead weight; it can be re-made from the
+     source folder if it is ever wanted.
+
+     FIND_LINES is indexed by HOW MANY features have been found, NOT by which
+     one, so the wording never depends on where the glass landed. (Each zone used
+     to carry its own `say` — those are gone, which is why FEATURE_ZONES above no
+     longer has a `say` field.) With a SINGLE entry every find says the same
+     thing, and say() suppresses a repeat, so the second find neither re-pops the
+     box nor replays the clip; the payoff line follows a moment later instead.
+     ====================================================================== */
+  var OPENING_LINE = "This is a ₹50 note.";
+  var NUDGE_LINE   = "Can you find ₹50 on this note?";
+  var FIND_LINES   = ["Good job!"];
+  /* ASK AGAIN AFTER THE FIRST FIND. Spoken once the first find's close-up has
+     finished, so the child is sent looking for the second one instead of being left
+     on "Good job!" with nothing said about what to do next.
+     Empty on the other five notes, which keep the original two-step script — the six
+     files are generated siblings, so the mechanism lives in all of them and only this
+     string differs, the same arrangement as SHOW_DRAG_NUDGE below. An empty value
+     means askAnother() does nothing at all. */
+  var ANOTHER_LINE = "";
+  var DONE_LINE    = "Perfect! This is how we write ₹50.";
+  var NUDGE_AFTER  = 5000;   // ms of stillness before the speech box asks the question
+
+  /* SHOW THE DRAG NUDGE?  —  the hand that mimes dragging the glass onto the note.
+     TRUE on the ₹10 note only, because that is the FIRST magnifier page in the book
+     (page 6). The gesture is identical on all six, so it needs teaching once; repeating
+     it on ₹20, ₹50, ₹100, ₹200 and ₹500 would be five more demonstrations of something
+     the child has already done, and a moving hand over a note they are trying to read
+     is a distraction once it has stopped being an instruction.
+     The hand's markup and CSS stay in every file on purpose — these six are generated
+     siblings that differ only in their data, so this is one word rather than five
+     files diverging, and turning the nudge on for another note is a one-word change.
+     The glass is still HELD BACK until the question on all six; only the hand differs. */
+  var SHOW_DRAG_NUDGE = false;
+
+  /* BACKSTOP for handing the reader back to the story. The real trigger is the
+     payoff voice-over finishing (see finish() below); this only fires when that
+     clip cannot play at all — autoplay refused, file missing, a device with no
+     audio — because `ended` never arrives in those cases and the child would be
+     left sitting on a finished activity. Comfortably longer than the longest
+     payoff take (4.4s) so it never pre-empts a clip that IS playing. */
+  var DONE_HANDOVER_MS = 6000;
+
+  var CONFETTI_COLOURS = ["#F5A524","#E4572E","#17877A","#F2C438","#8E4B8B","#3AA76D"];
+
+  /* ========================================================================
+     SOUND — every effect is synthesised, so there are no audio files to load.
+     The context is created inside the first drag, which is a user gesture, so
+     browsers allow it without needing a Start button.
+     ====================================================================== */
+  var Sfx = (function () {
+    var ctx = null;
+
+    function wake() {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!ctx) { try { ctx = new AC(); } catch (e) { return null; } }
+      if (ctx.state === "suspended") ctx.resume();
+      return ctx;
+    }
+
+    /* one plucked note */
+    function note(t0, freq, dur, opt) {
+      opt = opt || {};
+      var gain = opt.gain === undefined ? 0.12 : opt.gain;
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = opt.type || "sine";
+      o.frequency.setValueAtTime(freq, t0);
+      if (opt.bend) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq * opt.bend), t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t0); o.stop(t0 + dur + 0.02);
+    }
+
+    /* a puff of filtered noise — sparkle, and the confetti pop */
+    function noise(t0, dur, opt) {
+      opt = opt || {};
+      var freq = opt.freq || 3200, q = opt.q || 1;
+      var gain = opt.gain === undefined ? 0.08 : opt.gain, sweep = opt.sweep || 1;
+      var n = Math.floor(ctx.sampleRate * dur);
+      var buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+      for (var i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      var s = ctx.createBufferSource(); s.buffer = buf;
+      var f = ctx.createBiquadFilter(); f.type = "bandpass";
+      f.frequency.setValueAtTime(freq, t0);
+      if (sweep !== 1) f.frequency.exponentialRampToValueAtTime(freq * sweep, t0 + dur);
+      f.Q.value = q;
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(gain, t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      s.connect(f); f.connect(g); g.connect(ctx.destination);
+      s.start(t0);
+    }
+
+    return {
+      /* soft rubbery tick as the glass is picked up */
+      grab: function () {
+        if (!wake()) return;
+        note(ctx.currentTime, 240, 0.09, { type:"triangle", gain:0.05, bend:0.7 });
+      },
+      /* the magnet biting: two rising blips, like a latch closing */
+      snap: function () {
+        if (!wake()) return;
+        var t = ctx.currentTime;
+        note(t, 720, 0.05, { type:"square", gain:0.035 });
+        note(t + 0.045, 1080, 0.07, { type:"square", gain:0.03 });
+        noise(t, 0.06, { freq:2400, q:6, gain:0.03 });
+      },
+      /* discovery: a bright four note sparkle plus a shimmer of noise */
+      find: function () {
+        if (!wake()) return;
+        var t = ctx.currentTime;
+        [659.25, 830.61, 987.77, 1318.51].forEach(function (f, i) {
+          note(t + i * 0.062, f, 0.34, { type:"triangle", gain:0.1 });
+        });
+        note(t, 329.63, 0.5, { type:"sine", gain:0.05 });
+        noise(t + 0.03, 0.45, { freq:2600, q:0.8, gain:0.045, sweep:2.6 });
+      },
+      /* completion: confetti pop, then a little fanfare */
+      win: function () {
+        if (!wake()) return;
+        var t = ctx.currentTime;
+        noise(t, 0.16, { freq:1200, q:0.6, gain:0.12, sweep:3 });
+        note(t, 110, 0.22, { type:"sine", gain:0.09, bend:0.5 });
+        [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) {
+          note(t + 0.1 + i * 0.11, f, 0.6, { type:"triangle", gain:0.11 });
+        });
+        [1046.5, 1318.51, 1567.98].forEach(function (f, i) {
+          note(t + 0.62 + i * 0.05, f, 0.9, { type:"sine", gain:0.07 });
+        });
+      }
+    };
+  })();
+
+  /* ========================================================================
+     ELEMENTS AND STATE
+     ====================================================================== */
+  var noteEl = document.getElementById("note");
+  var lensEl = document.getElementById("lens");
+  var zoomEl = document.getElementById("zoom");
+  var rimEl  = document.getElementById("rimShadow");
+  var ringEl = document.getElementById("magnetRing");
+  var dragEl = document.getElementById("drag");
+  var hintEl = document.getElementById("dragHint");
+  var nudgeEl = document.getElementById("lensNudge");
+  var dlgEl  = document.getElementById("dlgText");
+  var confEl = document.getElementById("confetti");
+  var scoreEl = document.getElementById("score");
+  var scoreNumEl = document.getElementById("scoreNum");
+  var NOTE_URL = document.getElementById("noteImg").getAttribute("src");
+
+  // The note's box in stage pixels. Fixed by the design, re-read on layout().
+  var nx = 200, ny = 164, nw = 820, nh = 369;
+  var pos = { x: PARK_X, y: PARK_Y };   // glass centre after magnetism, stage px
+  var raw = { x: PARK_X, y: PARK_Y };   // where the finger really is, stage px
+  var found = [];                        // zone ids, in discovery order
+  var snapId = null;                     // zone the magnet is holding
+  var dragging = false, moved = false, pointerId = null;
+  var R = 64, lensW = 211, lensH = 202;  // glass geometry, stage px
+  /* SAFE AREA for the glass CENTRE, in stage px. Recomputed in layout() from the
+     magnifier's own measured size, so the whole artwork always stays inside the
+     1280x720 stage. The clamps used to be a flat 0..BASE_W / 0..BASE_H, which is the
+     centre — so the glass could be shoved into a corner with most of its rim and its
+     whole handle outside the stage, where .scene's overflow:hidden simply cut them
+     off. Derived rather than a fixed margin so it stays correct if GLASS_FRAC or the
+     artwork changes. */
+  var MIN_X = 0, MAX_X = BASE_W, MIN_Y = 0, MAX_Y = BASE_H;
+  var nudgeTimer = null;
+  /* Has the glass been handed over yet? Every input path is gated on this, so the note
+     cannot be worked before the question has been asked — otherwise a child could tap
+     a feature during the opening line and the activity would award a find for a
+     question that had not yet been put to them. */
+  var lensShown = false;
+  /* Close-up state. liveZoom is what render() actually draws with, so the eases are
+     a plain number animation and nothing else has to know about them. `revealing`
+     gates every input path, so a drag mid-reveal cannot move the glass. */
+  var revealing = false, liveZoom = ZOOM, revealRaf = null, revealTimer = null;
+
+  function isDone() { return found.length >= TARGET; }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function reducedMotion() {
+    return typeof window.matchMedia === "function" &&
+           window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  /* ---- score counter ---- */
+  function updateScore() {
+    scoreNumEl.textContent = found.length;
+    scoreEl.classList.remove("bump");
+    void scoreEl.offsetWidth;             // restart the animation cleanly
+    scoreEl.classList.add("bump");
+  }
+
+  /* ========================================================================
+     VOICE-OVER — one recording per line of the script, spoken as the line
+     appears. Ogg/Opus mono, converted from the supplied Vorbis takes with the
+     same settings tools/convert-audio.js uses for the book's own audio.
+     ------------------------------------------------------------------------
+     Keyed off the LINE VARIABLES (VO[OPENING_LINE] and friends), so rewording a
+     line carries its recording with it and the two cannot come apart.
+
+     THE PRINTED LINE AND THE SPOKEN LINE DELIBERATELY DIFFER NOW. The box reads
+     "This is a ₹10 note." and the recording still says "ten rupees", because the
+     symbol is the thing being taught: the child sees ₹10 and hears what it is
+     called, which is the whole point of a payoff line that says "this is how we
+     WRITE ₹10". So a mismatch here is the feature, not drift — do not "fix" it by
+     spelling the numbers back out.
+     Steps 3 and 5 are two DIFFERENT takes of nearly the same sentence, which is
+     exactly why the key is the full line and not a shortened id.
+
+     Autoplay: the opening line is spoken before the child has touched anything,
+     which browsers normally block. It works here because the book loads this
+     activity in an iframe carrying allow="autoplay" (see #lbdFrame in
+     ../index.html). If a browser refuses anyway the rejected promise is caught
+     and the clip is retried on the first real touch, so the worst case is a
+     late intro rather than a console error.
+     ====================================================================== */
+  var VO = {};
+  VO[OPENING_LINE]  = "../assets/vo/note-50-intro.ogg";
+  VO[NUDGE_LINE]    = "../assets/vo/note-50-question.ogg";
+  VO[FIND_LINES[0]] = "../assets/vo/good-job.ogg";   // shared by all six notes
+  VO[DONE_LINE]     = "../assets/vo/note-50-perfect.ogg";   // the payoff, once
+
+  var voEls = {}, voNow = null, voPending = null;
+  for (var voKey in VO) {
+    var voEl = new Audio(VO[voKey]);
+    voEl.preload = "auto";
+    voEls[voKey] = voEl;
+  }
+
+  /* One voice at a time: a new line cuts the previous clip off rather than
+     talking over it (the lines can arrive faster than a clip runs — "Good job"
+     is 1.5s but the child can find the second feature while the first clip is
+     still playing). */
+  function playVo(line) {
+    var a = voEls[line];
+    if (voNow && voNow !== a) {
+      try { voNow.pause(); voNow.currentTime = 0; } catch (e) {}
+    }
+    voNow = a || null;
+    if (!a) return;                        // a line with no recording: stay silent
+    try {
+      a.currentTime = 0;
+      var p = a.play();
+      /* Only an autoplay REFUSAL is worth retrying. Cutting a clip off above to
+         make way for the next line also rejects its play() promise, with
+         AbortError — that one is us, on purpose, and queueing it would make the
+         interrupted clip barge back in on the child's next touch. */
+      if (p && p.catch) p.catch(function (err) {
+        if (!err || err.name === "NotAllowedError") voPending = line;
+      });
+    } catch (e) { voPending = line; }
+  }
+  // Called from the first drag. Only retries if that line is STILL the one on
+  // screen, so a blocked intro can never blurt out over a later line.
+  function retryPendingVo() {
+    if (!voPending) return;
+    var line = voPending;
+    voPending = null;
+    if (dlgEl.textContent === line) playVo(line);
+  }
+  /* ---- the speech box is the only voice on the page ----
+     The "same line again?" test reads lastLine, NOT dlgEl.textContent. The markup
+     ships with the opening line already printed in it (so the box is never blank
+     on the first paint), which meant comparing against the DOM made the very first
+     say(OPENING_LINE) look like a repeat: it returned early, and the opening
+     voice-over was never spoken. lastLine starts null, so the first call always
+     counts. */
+  var lastLine = null;
+  function say(line) {
+    if (lastLine === line) return;
+    lastLine = line;
+    playVo(line);                           // keep the audio in step with the text
+    dlgEl.textContent = line;
+    dlgEl.classList.remove("pop");
+    void dlgEl.offsetWidth;               // restart the animation cleanly
+    dlgEl.classList.add("pop");
+  }
+  /* SCREEN 1 -> SCREEN 2. The question follows the INTRO VOICE-OVER rather than a
+     stopwatch: the child hears "This is a ₹N note", and the moment that line
+     finishes the speech box asks them to find it. Driving it off the audio keeps
+     the two in step whatever the take's length (the intro clips run 2.0-2.8s
+     across the six notes, all well short of the old fixed wait).
+
+     `ended` fires only when a clip plays out. Cutting the intro short — which
+     playVo does when a later line arrives — pauses it instead, and pause does
+     NOT fire `ended`, so a child who finds something during the intro never gets
+     the question thrown back at them afterwards.
+
+     The guard is on found.length, not `moved`: the question is step 2 of the
+     script, so it should still arrive if the child is merely dragging around, but
+     it must never overwrite step 3's line once a feature has been claimed (say()
+     would happily step the text backwards).
+
+     NUDGE_AFTER stays armed as a FALLBACK, because the clip might not play at all
+     — autoplay refused, file missing, a device with no audio — and without it
+     screen 2 would never arrive. Whichever fires first wins; say() ignores the
+     loser, since it is the same line. */
+  function showQuestion() {
+    if (found.length || isDone()) return;
+    say(NUDGE_LINE);
+    revealLens();          // the question and the tool arrive together
+  }
+
+  /* Hand the glass over: show it, start its idle bob, and play the drag nudge.
+     Guarded, because BOTH routes into showQuestion() can fire — the intro clip's
+     ended event and the NUDGE_AFTER fallback for when it cannot play — and a second
+     reveal would restart the entrance animation mid-flight. */
+  function revealLens() {
+    if (lensShown) return;
+    lensShown = true;
+    lensEl.classList.remove("waiting");
+    lensEl.classList.add("arrive", "idle");
+    if (SHOW_DRAG_NUDGE) {
+      positionHint();
+      hintEl.classList.add("run");
+      nudgeEl.classList.add("run");   // …and the glass goes with it
+    }
+    guideArm();          // from here on, eight still seconds earns a guided find
+  }
+
+  /* Park the hand on the glass and aim its travel at the note.
+     The vector is MEASURED, not hard-coded: it runs from the glass's resting centre
+     to a point well inside the note, so the mime is a real drag onto the note however
+     the note is placed and whatever the stage is scaled to. Re-run from layout()
+     because both ends of it move.
+     Offset up and left of the glass centre so the FINGERTIP lands on the glass rather
+     than the emoji's wrist. */
+  var HINT_TIP_X = 37, HINT_TIP_Y = 29;   // where the glyph's fingertip sits in its box
+  function positionHint() {
+    if (!hintEl || !nw) return;
+    /* Offset so the FINGERTIP lands on the glass centre, not the emoji's box corner.
+       Measured off the rendered glyph: at 54px the pointing tip sits ~37px right and
+       ~29px down from the box's top-left, which is nowhere near its centre. */
+    hintEl.style.left = (PARK_X - HINT_TIP_X) + "px";
+    hintEl.style.top  = (PARK_Y - HINT_TIP_Y) + "px";
+    var tx = nx + nw * 0.62, ty = ny + nh * 0.55;   // into the note, not at its edge
+    var hx = Math.round(tx - PARK_X) + "px", hy = Math.round(ty - PARK_Y) + "px";
+    // Both the hand and the glass wrapper read these, so they travel as one.
+    hintEl.style.setProperty("--hx", hx);  hintEl.style.setProperty("--hy", hy);
+    nudgeEl.style.setProperty("--hx", hx); nudgeEl.style.setProperty("--hy", hy);
+  }
+
+  /* The nudge has done its job the moment the child touches anything. */
+  function stopHint() {
+    if (hintEl) { hintEl.classList.remove("run"); hintEl.style.opacity = "0"; }
+    // Dropping the class returns the wrapper's offset to 0, so the glass is back at
+    // exactly the position render() has always believed it to be at.
+    if (nudgeEl) nudgeEl.classList.remove("run");
+  }
+  /* A BEAT between the opening line and the question, rather than the question
+     landing on the last syllable of "This is a ten-rupee note." The child needs a
+     moment to look at the note they have just been told about before being asked to
+     find something on it. */
+  var INTRO_GAP_MS = 1000;
+  var introVo = voEls[OPENING_LINE];
+  if (introVo) introVo.addEventListener("ended", function () {
+    window.setTimeout(showQuestion, INTRO_GAP_MS);
+  });
+
+  // Fallback only — see above. Cancelled by the first drag.
+  function armNudge() {
+    window.clearTimeout(nudgeTimer);
+    if (moved || isDone()) return;
+    nudgeTimer = window.setTimeout(showQuestion, NUDGE_AFTER);
+  }
+
+  /* ========================================================================
+     LAYOUT — the glass is sized from the note, so it scales with the design
+     ====================================================================== */
+  function layout() {
+    nx = noteEl.offsetLeft; ny = noteEl.offsetTop;
+    nw = noteEl.offsetWidth; nh = noteEl.offsetHeight;
+    if (!nw || !nh) return;
+
+    R = clamp(nw * GLASS_FRAC, 56, 112);
+    lensW = R / LENS_R;
+    lensH = lensW / LENS_RATIO;
+    lensEl.style.width = lensW + "px";
+    lensEl.style.height = lensH + "px";
+
+    var d = R * 2, left = LENS_CX * lensW - R, top = LENS_CY * lensH - R;
+    [zoomEl, rimEl, ringEl].forEach(function (el) {
+      el.style.width = d + "px";
+      el.style.height = d + "px";
+      el.style.left = left + "px";
+      el.style.top = top + "px";
+    });
+    zoomEl.style.backgroundImage = "url(" + NOTE_URL + ")";
+
+    // The glass centre may go no closer to an edge than its own artwork allows.
+    MIN_X = LENS_CX * lensW;
+    MAX_X = BASE_W - (1 - LENS_CX) * lensW;
+    MIN_Y = LENS_CY * lensH;
+    MAX_Y = BASE_H - (1 - LENS_CY) * lensH;
+    // Degenerate only if the artwork were wider/taller than the stage. Collapsing to
+    // the centre keeps clamp()'s arguments in order rather than inverting them.
+    if (MAX_X < MIN_X) { MIN_X = MAX_X = BASE_W / 2; }
+    if (MAX_Y < MIN_Y) { MIN_Y = MAX_Y = BASE_H / 2; }
+    pos.x = clamp(pos.x, MIN_X, MAX_X); pos.y = clamp(pos.y, MIN_Y, MAX_Y);
+    raw.x = clamp(raw.x, MIN_X, MAX_X); raw.y = clamp(raw.y, MIN_Y, MAX_Y);
+    positionHint();        // both ends of the nudge's travel just moved
+    render();
+  }
+
+  /* The zoom layer is the note at ZOOM scale, slid so the point under the glass
+     centre lines up with the note underneath. It is only shown while the glass is
+     actually over the note; off the note it fades out and the glass reads as clear. */
+  function render() {
+    lensEl.style.transform = "translate3d(" +
+      (pos.x - LENS_CX * lensW) + "px," + (pos.y - LENS_CY * lensH) + "px,0)";
+
+    var fx = (pos.x - nx) / nw, fy = (pos.y - ny) / nh;
+    var over = fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1;
+    zoomEl.classList.toggle("on", over);
+    if (over) {
+      // liveZoom, not ZOOM: it equals ZOOM at rest and is driven by the close-up.
+      zoomEl.style.backgroundSize = (nw * liveZoom) + "px " + (nh * liveZoom) + "px";
+      zoomEl.style.backgroundPosition =
+        (R - fx * nw * liveZoom) + "px " + (R - fy * nh * liveZoom) + "px";
+    }
+  }
+
+  /* ========================================================================
+     MAGNETISM — nudges the glass towards the nearest feature once part of it is
+     inside the glass, and holds it dead centre when it is close. All in stage px.
+     ====================================================================== */
+  function smoothstep(a, b, v) {
+    var t = clamp((v - a) / (b - a), 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
+  function magnetise(x, y) {
+    var best = null;
+    for (var i = 0; i < FEATURE_ZONES.length; i++) {
+      var z = FEATURE_ZONES[i];
+      var zx = nx + (z.x / 100) * nw, zy = ny + (z.y / 100) * nh;
+      var reach = (z.r / 100) * nw + R * MAGNET_BITE;
+      var d = Math.sqrt((x - zx) * (x - zx) + (y - zy) * (y - zy));
+      if (d < reach && (!best || d < best.d)) best = { z:z, d:d, zx:zx, zy:zy, reach:reach };
+    }
+    if (!best) return { x:x, y:y, id:null, hold:0 };
+    var closeness = 1 - best.d / best.reach;  // 0 at the rim of reach, 1 at centre
+    var hold = Math.min(1, MAGNET_TUG * closeness * closeness + smoothstep(LOCK_FROM, LOCK_TO, closeness));
+    return {
+      x: x + (best.zx - x) * hold,
+      y: y + (best.zy - y) * hold,
+      id: best.z.id,
+      hold: hold
+    };
+  }
+
+  /* ========================================================================
+     DISCOVERY
+     ====================================================================== */
+  /* THE CLOSE-UP. The glass is parked dead centre on the feature and the
+     magnification is eased up, held, then eased back, landing on exactly ZOOM at
+     REVEAL_MS. Input is ignored throughout (see `revealing` in the drag handlers)
+     so the child actually looks at the detail instead of dragging past it.
+     Only the zoom is animated here — the glass does not move, so there is nothing
+     to fight the magnet over. */
+  function runReveal(zx, zy, done) {
+    revealing = true;
+    /* A FIND ENDS THE GESTURE. The glass is about to be parked on this feature while
+       the finger stays wherever it happens to be, so any further movement in the same
+       gesture would be interpolated along a path the finger never actually travelled
+       — and that path can run straight through other features and claim them. Letting
+       go here is also what makes each feature found SEPARATELY: the next one needs a
+       fresh press. */
+    releaseDrag();
+    dwellCancel();
+    /* Park dead centre, and re-seat the FINGER there too. Without moving `raw` the
+       next pointermove would interpolate from wherever the finger drifted to during
+       the reveal and the glass would jump. */
+    pos.x = zx; pos.y = zy;
+    raw.x = zx; raw.y = zy;
+    snapId = null;
+    lensEl.classList.remove("snapped");
+    render();
+
+    function land() {
+      revealing = false;
+      liveZoom = ZOOM;            // exactly ZOOM, never an eased approximation
+      pos.x = zx; pos.y = zy;
+      raw.x = zx; raw.y = zy;
+      render();
+      if (done) done();
+      guideArm();        // isDone() short-circuits this on the final find
+    }
+
+    /* Reduced motion: straight to REVEAL_ZOOM, hold the same two seconds, straight
+       back. Same timing and same end state, no easing. */
+    if (reducedMotion()) {
+      liveZoom = REVEAL_ZOOM;
+      render();
+      revealTimer = window.setTimeout(land, REVEAL_MS);
+      return;
+    }
+
+    var now = function () {
+      return (window.performance && performance.now) ? performance.now() : Date.now();
+    };
+    var t0 = now(), holdEnd = REVEAL_MS - REVEAL_OUT;
+    (function step() {
+      var t = now() - t0;
+      if (t >= REVEAL_MS) { land(); return; }
+      if (t < REVEAL_IN) {
+        liveZoom = ZOOM + (REVEAL_ZOOM - ZOOM) * smoothstep(0, 1, t / REVEAL_IN);
+      } else if (t < holdEnd) {
+        liveZoom = REVEAL_ZOOM;   // the hold, at the exact peak
+      } else {
+        liveZoom = REVEAL_ZOOM -
+          (REVEAL_ZOOM - ZOOM) * smoothstep(0, 1, (t - holdEnd) / REVEAL_OUT);
+      }
+      render();
+      revealRaf = window.requestAnimationFrame(step);
+    })();
+  }
+
+  /* The NEAREST unfound zone the glass centre is sitting inside, or null. Nearest
+     only: the catch circles overlap, and one glass position must never award two
+     features. The catch radius is the zone's own r shrunk by CATCH_SCALE. */
+  function candidateAt(x, y) {
+    if (!nw || isDone() || revealing) return null;
+    var best = null;
+    for (var i = 0; i < FEATURE_ZONES.length; i++) {
+      var z = FEATURE_ZONES[i];
+      if (found.indexOf(z.id) !== -1) continue;   // each place counts once
+      var zx = nx + (z.x / 100) * nw, zy = ny + (z.y / 100) * nh;
+      var d = Math.sqrt((x - zx) * (x - zx) + (y - zy) * (y - zy));
+      if (d <= (z.r * CATCH_SCALE / 100) * nw && (!best || d < best.d)) best = { z:z, d:d, zx:zx, zy:zy };
+    }
+    return best;
+  }
+
+  /* Count one feature: the ring, the sparkle, the score, the line, the close-up. */
+  function claim(best) {
+    dwellArmed = false;     // see the dwell block below — no chaining off one gesture
+    found.push(best.z.id);
+    Sfx.find();
+    markFound(best.z);      // the gold ring that stays
+    flash(best.z);          // the sparkle that clears
+    updateScore();
+    // by DISCOVERY ORDER, not by which zone — see the sequence note above
+    say(FIND_LINES[Math.min(found.length, FIND_LINES.length) - 1]);
+
+    /* The close-up runs on EVERY find. On the last one the celebration is handed to
+       it, so confetti, the win line and lifting the glass away all wait until the
+       child has had the full two seconds on the detail. */
+    /* The close-up's callback: the payoff on the last find, and on any earlier one
+       the follow-up question — AFTER the close-up rather than on top of it, so the
+       child sees the detail they found before being asked for the next. */
+    runReveal(best.zx, best.zy, isDone() ? finish : askAnother);
+  }
+
+  /* "Can you find another …?" — only where ANOTHER_LINE is set, and only while
+     something is actually left to find. say() suppresses a repeat, so the second and
+     any later find cannot re-pop the box with a question already answered. */
+  function askAnother() {
+    if (!ANOTHER_LINE || isDone()) return;
+    say(ANOTHER_LINE);
+  }
+
+  /* ========================================================================
+     THE HOLD  —  a feature counts only once the glass has RESTED on it
+     ------------------------------------------------------------------------
+     Arriving on a feature claims nothing. The glass has to stay over it for DWELL_MS
+     while the halo fills round the rim, so the child can see the hold building and
+     knows to keep still. Drift off early and the clock resets to zero with nothing
+     counted. Because it is a clock and not an event, holding a FINGER still keeps it
+     running (no pointer events are needed), and lifting the finger does not stop it —
+     what has to stay put is the GLASS, which is exactly what the request asked for.
+
+     dwellArmed is what stops one gesture chaining into two finds. When a close-up
+     ends, the glass is parked dead centre on the feature just claimed, which can
+     leave a NEIGHBOURING zone inside the catch — and an always-live clock would then
+     count that one too, a second later, with the child having done nothing at all.
+     So a claim disarms the clock and only a fresh press or arrow key re-arms it.
+     ====================================================================== */
+  var dwellZone = null, dwellT0 = 0, dwellRaf = null, dwellArmed = true;
+
+  function nowMs() {
+    return (window.performance && performance.now) ? performance.now() : Date.now();
+  }
+  function dwellCancel() {
+    dwellZone = null; dwellT0 = 0;
+    if (dwellRaf) { window.cancelAnimationFrame(dwellRaf); dwellRaf = null; }
+    lensEl.classList.remove("holding");
+    ringEl.style.setProperty("--fill", "0deg");
+  }
+  function dwellTick() {
+    dwellRaf = null;
+    if (!dwellZone || isDone() || revealing) { dwellCancel(); return; }
+    // Re-tested every frame rather than trusted from when the hold began, so a glass
+    // that drifts off the feature — or a relayout that moves the note — resets it.
+    var best = candidateAt(pos.x, pos.y);
+    if (!best || best.z.id !== dwellZone) { dwellCancel(); return; }
+    var p = clamp((nowMs() - dwellT0) / DWELL_MS, 0, 1);
+    ringEl.style.setProperty("--fill", (p * 360) + "deg");
+    if (p >= 1) { dwellCancel(); claim(best); return; }
+    dwellRaf = window.requestAnimationFrame(dwellTick);
+  }
+  /* Called after every move of the glass, with its settled position. */
+  function updateDwell() {
+    if (!dwellArmed || isDone() || revealing) { dwellCancel(); return; }
+    var best = candidateAt(pos.x, pos.y);
+    var id = best ? best.z.id : null;
+    if (!id) { dwellCancel(); return; }
+    if (id === dwellZone) return;              // already counting down on this one
+    dwellCancel();
+    dwellZone = id; dwellT0 = nowMs();
+    lensEl.classList.add("holding");
+    dwellRaf = window.requestAnimationFrame(dwellTick);
+  }
+
+  /* ========================================================================
+     THE GUIDE  —  eight seconds of nothing happening and the glass goes to a
+     feature the child has not found yet
+     ------------------------------------------------------------------------
+     A child who has stopped is usually a child who cannot see what to look for.
+     After IDLE_GUIDE_MS with no press, no drag and no arrow key, the glass travels
+     to the NEAREST unfound feature — at whatever point they are stuck, first find
+     or last.
+
+     IT COUNTS NOTHING. The glass is put on the feature and left there, and that is
+     all: the gold arc does not fill, the score does not move, no line is spoken. The
+     find is the CHILD'S to make — they still have to tap that spot or drag onto it,
+     and then the ordinary hold (see THE HOLD above) runs exactly as it always has.
+     The guide answers "where do I look?", never "there, done".
+     This is why arrive() deliberately does NOT touch dwellArmed or call
+     updateDwell(): discovery here is a clock, and every route that starts that clock
+     — placeGlass() from a press or a drag, and the arrow keys — requires the child.
+     Nothing the guide does can start it.
+
+     IT IS A RESCUE, NOT AN AUTOPILOT. guideArm() is called from every route the
+     child can act through — press, drag, arrow key, and the end of each close-up —
+     so any sign of life restarts the eight seconds, and a touch mid-travel takes
+     the glass over immediately.
+     ====================================================================== */
+  var IDLE_GUIDE_MS   = 8000;   // stillness before the glass shows them one
+  var GUIDE_TRAVEL_MS = 900;    // how long it takes to get there
+  var GUIDE_DWELL_MS  = 1100;   // how long it rests on the feature before going back
+  var guideTimer = null, guideRaf = null, guiding = false;
+  var guideShown = null;        // the zone the guide last parked the glass on
+
+  function guideCancel() {
+    window.clearTimeout(guideTimer); guideTimer = null;
+    if (guideRaf) { window.cancelAnimationFrame(guideRaf); guideRaf = null; }
+    if (guiding) { guiding = false; lensEl.classList.remove("guiding"); }
+  }
+  /* Restart the eight seconds. Safe to call as often as you like. */
+  function guideArm() {
+    guideCancel();
+    if (!lensShown || isDone()) return;   // no tool yet, or nothing left to find
+    guideTimer = window.setTimeout(guideRun, IDLE_GUIDE_MS);
+  }
+  /* The nearest feature still to be found, measured from where the glass is NOW, so
+     the guide reaches for whatever the child was closest to rather than always
+     starting again at zone one. */
+  function guideTarget() {
+    var best = null, shown = null;
+    for (var i = 0; i < FEATURE_ZONES.length; i++) {
+      var z = FEATURE_ZONES[i];
+      if (found.indexOf(z.id) !== -1) continue;
+      var zx = nx + (z.x / 100) * nw, zy = ny + (z.y / 100) * nh;
+      var dx = pos.x - zx, dy = pos.y - zy;
+      var cand = { z:z, d:Math.sqrt(dx * dx + dy * dy), zx:zx, zy:zy };
+      /* Hold back the one we pointed at last time. Now that the guide leaves the
+         glass sitting on its target instead of claiming it, the nearest unfound zone
+         next time round is the one already underneath — so it would point at the same
+         feature for ever, travelling zero pixels and showing the child nothing. Set
+         aside as "shown": it is still used if it is the only one left. */
+      if (z.id === guideShown) { shown = cand; continue; }
+      if (!best || cand.d < best.d) best = cand;
+    }
+    return best || shown;
+  }
+  function guideRun() {
+    guideTimer = null;
+    /* Holding the glass, mid close-up, or not laid out yet — none of those are a
+       still child, and none are a moment to move anything. Ask again in eight. */
+    if (!lensShown || isDone() || dragging || revealing || !nw) { guideArm(); return; }
+    var target = guideTarget();
+    if (!target) { guideArm(); return; }
+    /* The last feature on the note, still under the glass, still not claimed: there
+       is nowhere to travel to. Leave it where it is rather than replaying a 0px move
+       every eight seconds — if the child drags the glass off and stops again, this
+       distance grows and the guide brings it back. */
+    if (target.z.id === guideShown && target.d < 4) { guideArm(); return; }
+
+    stopHint();                        // a real drag supersedes the mimed one
+    lensEl.classList.remove("idle");   // the bob would fight the travel
+    lensEl.classList.add("guiding");
+    dwellCancel();                     // nothing is being held while it is in transit
+    guiding = true;
+
+    /* OUT, PAUSE, AND BACK AGAIN. The glass used to be left sitting on the feature,
+       which quietly moved the child's tool somewhere they did not put it — and on the
+       last unfound feature it parked on the answer and stayed there. It now shows the
+       place and returns to exactly where the child left it, so the guide costs them
+       nothing and the note is theirs to search again. */
+    var home = { x: raw.x, y: raw.y };
+    var x1 = clamp(target.zx, MIN_X, MAX_X), y1 = clamp(target.zy, MIN_Y, MAX_Y);
+    var span = reducedMotion() ? 0 : GUIDE_TRAVEL_MS;
+    var legs = [
+      { fx: home.x, fy: home.y, tx: x1,      ty: y1,      ms: span },              // out
+      { fx: x1,     fy: y1,     tx: x1,      ty: y1,      ms: GUIDE_DWELL_MS },    // look
+      { fx: x1,     fy: y1,     tx: home.x,  ty: home.y,  ms: span },              // back
+    ];
+    var leg = 0, t0 = nowMs();
+
+    function arrive() {
+      guiding = false;
+      lensEl.classList.remove("guiding");
+      guideShown = target.z.id;
+      /* NOTHING IS CLAIMED. No dwellArmed, no updateDwell() — pointing is the guide's
+         whole job. The child claims a feature by tapping it or dragging onto it,
+         which is the only thing that ever starts the hold. */
+      guideArm();          // still idle in another eight? point out the next one
+    }
+
+    (function step() {
+      guideRaf = null;
+      if (!guiding) return;                       // a touch took over mid-travel
+      var L = legs[leg];
+      var p = L.ms ? clamp((nowMs() - t0) / L.ms, 0, 1) : 1;
+      // ease in-out, so it sets off and settles gently instead of snapping
+      var e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      raw.x = L.fx + (L.tx - L.fx) * e;
+      raw.y = L.fy + (L.ty - L.fy) * e;
+      // Through settle(), so the magnet and its latch sound behave exactly as they
+      // do under a finger, and render() keeps the magnification live all the way.
+      var m = settle(raw.x, raw.y);
+      pos.x = m.x; pos.y = m.y;
+      render();
+      if (p >= 1) {
+        leg++;
+        if (leg >= legs.length) { arrive(); return; }
+        t0 = nowMs();
+      }
+      guideRaf = window.requestAnimationFrame(step);
+    })();
+  }
+
+  /* Runs the magnet and the latch sound for one position. It no longer decides
+     anything about discovery — capture is a HOLD now, driven by the dwell clock
+     below rather than by whichever position a pointer event happened to report. */
+  function settle(rx, ry) {
+    var m = magnetise(rx, ry);
+    var holding = m.hold > 0.3 ? m.id : null;
+    if (holding && snapId !== holding) Sfx.snap();
+    snapId = holding;
+    lensEl.classList.toggle("snapped", !!holding && !isDone());
+    return m;
+  }
+
+  /* ========================================================================
+     EFFECTS — everything here is positioned in NOTE space (percentages), so the
+     marks stay glued to the note at any scale.
+     ====================================================================== */
+
+  /* The gold circle that stays put, marking a spot the reader dragged the glass
+     onto and found. Sized to the zone's own catch radius, so the ring shows
+     exactly the area that counted. */
+  function markFound(z) {
+    var mark = document.createElement("span");
+    mark.className = "foundMark";
+    mark.style.left = z.x + "%";
+    mark.style.top = z.y + "%";
+    mark.style.width = (z.r * 2) + "%";
+    mark.style.paddingBottom = (z.r * 2) + "%";   // % padding is of WIDTH → a square
+    noteEl.appendChild(mark);
+  }
+
+  /* The sparkle burst, which clears itself and leaves only the ring behind. */
+  function flash(z) {
+    var glow = document.createElement("span");
+    glow.className = "flashGlow";
+    glow.style.left = z.x + "%";
+    glow.style.top = z.y + "%";
+    glow.style.width = (z.r * 2) + "%";
+    glow.style.paddingBottom = (z.r * 2) + "%";
+
+    var burst = document.createElement("span");
+    burst.className = "burst";
+    burst.style.left = z.x + "%";
+    burst.style.top = z.y + "%";
+    for (var i = 0; i < 10; i++) {
+      var ray = document.createElement("i");
+      ray.style.rotate = (i * 36) + "deg";
+      burst.appendChild(ray);
+    }
+
+    var pop = document.createElement("span");
+    pop.className = "popper";
+    pop.style.left = z.x + "%";
+    pop.style.top = z.y + "%";
+    for (var j = 0; j < 14; j++) {
+      var a = (j / 14) * Math.PI * 2 + Math.random() * 0.4;
+      var power = 34 + Math.random() * 30;
+      var bit = document.createElement("i");
+      var size = 4 + Math.random() * 4;
+      var round = j % 3 === 0;
+      bit.style.width = size + "px";
+      bit.style.height = (round ? size : size * 0.55) + "px";
+      bit.style.background = CONFETTI_COLOURS[j % CONFETTI_COLOURS.length];
+      bit.style.borderRadius = round ? "50%" : "1px";
+      bit.style.animationDelay = (Math.random() * 0.08) + "s";
+      bit.style.setProperty("--dx", (Math.cos(a) * power) + "px");
+      bit.style.setProperty("--dy", (Math.sin(a) * power - 14) + "px");
+      pop.appendChild(bit);
+    }
+
+    noteEl.appendChild(glow);
+    noteEl.appendChild(burst);
+    noteEl.appendChild(pop);
+    window.setTimeout(function () {
+      [glow, burst, pop].forEach(function (el) { if (el.parentNode) el.parentNode.removeChild(el); });
+    }, 2000);
+  }
+
+  /* ========================================================================
+     COMPLETION — fanfare, confetti, the glass is lifted away, then the book is
+     asked to turn the page. No extra panel or button.
+     ====================================================================== */
+
+  /* ========================================================================
+     CONFETTI  —  the small burst every activity ends on
+     ------------------------------------------------------------------------
+     Deliberately IDENTICAL in all sixteen activities. The magnifier pages and the
+     quizzes are different games, but finishing one should feel the same wherever
+     the child happens to be in the book, so the piece count, the size range, the
+     palette and the fall are one spec rather than two that drifted apart.
+
+     Small on purpose: this is a full-stage shower, and at the size it was first
+     built (56 pieces, 7-17px) it read as the page celebrating rather than the
+     child being congratulated.
+
+     The pieces fall out of the bottom of an overflow:hidden box and are then
+     cleared, so replaying an activity cannot leave the last burst behind them.
+     ====================================================================== */
+  var CONFETTI_PIECES = 40;
+  var confettiTimer = null;
+  function popConfetti() {
+    if (!confEl) return;
+    confEl.innerHTML = "";
+    for (var ci = 0; ci < CONFETTI_PIECES; ci++) {
+      var csize = 5 + Math.random() * 6, cround = Math.random() > 0.6;
+      var cbit = document.createElement("i");
+      cbit.style.left = (Math.random() * 100) + "%";
+      cbit.style.width = csize + "px";
+      cbit.style.height = (cround ? csize : csize * 0.5) + "px";
+      cbit.style.background = CONFETTI_COLOURS[ci % CONFETTI_COLOURS.length];
+      cbit.style.borderRadius = cround ? "50%" : "1px";
+      cbit.style.animationDuration = (1.9 + Math.random() * 1.3) + "s";
+      cbit.style.animationDelay = (Math.random() * 0.5) + "s";
+      cbit.style.setProperty("--drift", ((Math.random() - 0.5) * 120) + "px");
+      confEl.appendChild(cbit);
+    }
+    window.clearTimeout(confettiTimer);
+    confettiTimer = window.setTimeout(function () { confEl.innerHTML = ""; }, 5000);
+  }
+
+  function finish() {
+    Sfx.win();
+    window.clearTimeout(nudgeTimer);
+    snapId = null;
+    lensEl.classList.remove("snapped");
+    dragEl.classList.add("finished");
+    dragging = false;
+    dwellCancel();               // no clock left running behind the celebration
+    say(DONE_LINE);
+
+    /* RING THE ONES THEY DID NOT REACH. TARGET is 2 but most notes carry three or
+       four ₹N marks, so finishing left the rest bare — which reads as "those were
+       not it" rather than "here are all the places it is written". Marked, not
+       counted: `found` is untouched, so the score still says what the child did. */
+    FEATURE_ZONES.forEach(function (z) {
+      if (found.indexOf(z.id) === -1) markFound(z);
+    });
+
+    popConfetti();
+
+    /* THE GLASS GOES AT ONCE. It used to lift away over a .66s animation with a
+       1.2s backstop, which left it floating over the note for more than a second
+       after the activity was already over — on top of the two-second close-up the
+       child had just watched. Taken off the moment the second area is captured
+       instead: the note is finished, every feature is ringed, and the tool has
+       nothing left to do. */
+    lensEl.classList.remove("idle");
+    hideLens();
+
+    /* Hand the reader back to the story only once the PAYOFF LINE has finished
+       speaking. The clips run 4.1-4.4s across the six notes and the old fixed
+       2600ms wait cut every one of them off mid-sentence: turning the page
+       unloads this iframe (resetLbd in ../script.js) and the audio dies with it.
+       Whichever of the two paths fires first wins, and handOver only ever runs
+       once, so a slow clip cannot produce two page turns. */
+    var handedOver = false;
+    function handOver() {
+      if (handedOver) return;
+      handedOver = true;
+      tell("lbd-complete");
+    }
+    var doneVo = voEls[DONE_LINE];
+    if (doneVo && !doneVo.ended) {
+      doneVo.addEventListener("ended", handOver, { once: true });
+    } else if (doneVo) {
+      handOver();                       // already finished — nothing to wait for
+    }
+    window.setTimeout(handOver, DONE_HANDOVER_MS);   // see DONE_HANDOVER_MS above
+  }
+
+  function hideLens() {
+    stopHint();
+    lensEl.classList.add("gone");
+  }
+
+  /* ========================================================================
+     DRAGGING — one path covers mouse, pen and touch. The whole page is the
+     surface, so the glass can be picked up where it rests, off the note.
+     ====================================================================== */
+  /* Screen coords → stage pixels, clamped to the safe area. The rect is the
+     on-screen box, so this stays correct under the #fit transform. */
+  function toStage(clientX, clientY) {
+    var rect = dragEl.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return {
+      x: clamp((clientX - rect.left) / rect.width * BASE_W, MIN_X, MAX_X),
+      y: clamp((clientY - rect.top) / rect.height * BASE_H, MIN_Y, MAX_Y)
+    };
+  }
+
+  /* Is this stage point on the note? Taps are only accepted there. */
+  function onNote(x, y) {
+    return x >= nx && x <= nx + nw && y >= ny && y <= ny + nh;
+  }
+  /* …or on the GLASS itself, which is how it gets picked up where it rests, off the
+     note. Without this, restricting taps to the note would make the parked glass
+     unreachable and there would be nothing to drag. Generous by a third of a radius
+     so a small finger still finds it. */
+  function onGlass(x, y) {
+    var dx = x - pos.x, dy = y - pos.y;
+    return Math.sqrt(dx * dx + dy * dy) <= R * 1.35;
+  }
+
+  /* PUT THE GLASS SOMEWHERE. One function for a tap and for a drag, because with a
+     hold deciding discovery they are the same operation: move the glass, then let the
+     dwell clock decide.
+     ------------------------------------------------------------------------
+     It used to sample the PATH in six interpolated steps, and that was the activity's
+     worst bug. The magnet pulls each sampled point into any zone it passes near, so
+     the straight line from the glass's old position to the new one decided what got
+     counted, not where the child aimed: measured on the ₹10 note, tapping the
+     pattern, the sideways text OR the corner numeral all counted "big10", because
+     that zone sits between the park spot and the note. The child tapped one thing, a
+     different thing lit up, twice, and the activity was over.
+     Path sampling existed so a quick swipe would still register what it flew over.
+     The hold replaces that outright — a swipe is meant to claim nothing now — so
+     there is one settle, at the place the glass is actually going. */
+  function placeGlass(clientX, clientY) {
+    var p = toStage(clientX, clientY);
+    if (!p) return;
+    raw = { x:p.x, y:p.y };
+    var m = settle(p.x, p.y);
+    pos.x = m.x; pos.y = m.y; render();
+    updateDwell();
+  }
+
+  function firstMove() {
+    if (moved) return;
+    moved = true;
+    window.clearTimeout(nudgeTimer);
+    lensEl.classList.remove("idle");
+    stopHint();         // they have the gesture; stop miming it
+    retryPendingVo();   // this is a real gesture: any autoplay-blocked clip may run
+  }
+
+  dragEl.addEventListener("pointerdown", function (e) {
+    if (isDone() || revealing) return;           // put away, or mid close-up
+    if (!lensShown) return;                      // the question has not been asked yet
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    var p = toStage(e.clientX, e.clientY);
+    if (!p) return;
+    var hitNote = onNote(p.x, p.y), hitGlass = onGlass(p.x, p.y);
+    /* PRESSES ONLY COUNT ON THE NOTE, OR ON THE GLASS. The drag surface covers the
+       whole stage (it has to, or the glass could not be dragged off the note), but a
+       press on the empty background is not aimed at anything — it used to teleport
+       the glass to that spot, so a stray tap beside the note moved the magnifier and
+       swept the line between. Ignored outright now. */
+    if (!hitNote && !hitGlass) return;
+    pointerId = e.pointerId;
+    // Capture keeps the drag alive if the finger slides off the surface. It can
+    // throw for a pointer the browser no longer considers active, and losing the
+    // drag entirely over that would be far worse than dragging without capture.
+    try { dragEl.setPointerCapture(e.pointerId); } catch (_) {}
+    dragging = true;
+    firstMove();
+    dragEl.classList.add("dragging");
+    lensEl.classList.add("grabbed");
+    Sfx.grab();
+    /* On the note: move the glass to that exact spot and test only there. On the
+       glass: pick it up WITHOUT moving it, and seat the drag origin at the glass, so
+       the first pointermove is a small delta instead of a teleport. */
+    dwellArmed = true;              // a deliberate press re-arms the hold clock
+    if (hitNote) placeGlass(e.clientX, e.clientY);
+    else { raw = { x: pos.x, y: pos.y }; updateDwell(); }
+    guideArm();          // they are trying — the guide waits another eight seconds
+  });
+
+  dragEl.addEventListener("pointermove", function (e) {
+    if (!dragging || isDone() || revealing || e.pointerId !== pointerId) return;
+    e.preventDefault();  // with touch-action:none this stops the page scrolling
+    placeGlass(e.clientX, e.clientY);
+    guideArm();
+  });
+
+  /* Let the current gesture go. Split out of endDrag because runReveal needs it too
+     (a find ends the gesture — see there), and two copies of this would drift. */
+  function releaseDrag() {
+    if (pointerId !== null) {
+      try {
+        if (dragEl.hasPointerCapture && dragEl.hasPointerCapture(pointerId)) {
+          dragEl.releasePointerCapture(pointerId);
+        }
+      } catch (_) {}
+    }
+    pointerId = null;
+    dragging = false;
+    dragEl.classList.remove("dragging");
+    lensEl.classList.remove("grabbed");
+  }
+  function endDrag(e) {
+    if (e.pointerId !== pointerId) return;
+    releaseDrag();
+  }
+  dragEl.addEventListener("pointerup", endDrag);
+  dragEl.addEventListener("pointercancel", endDrag);
+
+  /* Arrow keys move the glass too, so a mouse is never required */
+  dragEl.addEventListener("keydown", function (e) {
+    if (isDone() || revealing || !lensShown) return;
+    var step = e.shiftKey ? 60 : 20;             // stage pixels
+    var d = { ArrowLeft:[-step,0], ArrowRight:[step,0], ArrowUp:[0,-step], ArrowDown:[0,step] }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    firstMove();
+    dwellArmed = true;          // same as a press: a key is a deliberate act
+    raw = { x: clamp(raw.x + d[0], MIN_X, MAX_X), y: clamp(raw.y + d[1], MIN_Y, MAX_Y) };
+    var m = settle(raw.x, raw.y);
+    pos.x = m.x; pos.y = m.y;
+    render();
+    updateDwell();
+    guideArm();
+  });
+
+  /* ========================================================================
+     START
+     ====================================================================== */
+  window.addEventListener("resize", layout);
+  document.getElementById("scoreOf").textContent = "/" + TARGET;   // keep in step with TARGET
+  layout();
+  say(OPENING_LINE);
+  armNudge();
+  window.addEventListener("load", function () { fit(); layout(); });
+})();
+</script>
+</body>
+</html>
